@@ -3,7 +3,7 @@ pragma circom 2.1.5;
 include "./node_modules/circomlib/circuits/poseidon.circom";
 include "./node_modules/circomlib/circuits/comparators.circom";
 include "./node_modules/circomlib/circuits/bitify.circom";
-include "./node_modules/circomlib/circuits/eddsa.circom";
+include "./node_modules/circomlib/circuits/eddsaposeidon.circom";
 
 
 template iou(){
@@ -20,13 +20,13 @@ template iou(){
    signal input inputVal;
    signal input outputVal;
    signal input input_index;
-   signal input signature[2];
+   signal input signature[2][2];
    signal input nullifierKey;
-   signal input pubkey;
+   signal input pubkey[2];
    signal input receiver;
 
    // recover sender
-   var identityCommitment = Poseidon(2)([nullifierKey, pubkey]);
+   var identityCommitment = Poseidon(3)([nullifierKey, pubkey[0], pubkey[1]]);
    // TODO n_in_pre
    // recover input note
    var input_note = Poseidon(5)([note_id, index, inputVal, identityCommitment, input_index]);
@@ -55,24 +55,16 @@ template iou(){
    GreaterEqThan.out === 1;
    // TODO Check signature
    var message = Poseidon(2)([state_in, recover_trans]);
-   component message2bits = Num2Bits(256);
-   message2bits.in <== message;
-
-   component signature_r2bits = Num2Bits(256);
-   signature_r2bits.in <== signature[0];
-
-   component signature_s2bits = Num2Bits(256);
-   signature_s2bits.in <== signature[1];
-
-   component pubkey2bits = Num2Bits(256);
-   pubkey2bits.in <== pubkey;
 
    // signature, message, pubkey
-   component sign = EdDSAVerifier(256);
-   sign.msg <== message2bits.out;
-   sign.A <== pubkey2bits.out;
-   sign.R8 <== signature_r2bits.out;
-   sign.S <== signature_s2bits.out;
+   component sign = EdDSAPoseidonVerifier();
+   sign.enabled <== 1;
+   sign.M <== message;
+   sign.Ax <== pubkey[0];
+   sign.Ay <== pubkey[1];
+   sign.S <== signature[0][0];
+   sign.R8x <== signature[1][0];
+   sign.R8y <== signature[1][1];
 
 
 }
