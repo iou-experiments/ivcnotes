@@ -1,6 +1,6 @@
 [workspace]
 default-members = ["cli"]
-members = [
+members = [ "circuits",
   "cli",
 ]
 resolver = "2"
