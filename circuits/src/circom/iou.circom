@@ -7,12 +7,12 @@ include "./node_modules/circomlib/circuits/eddsaposeidon.circom";
 
 
 template iou(){
-   signal input step_in[3];
-   signal output step_out[3];
+   signal input ivc_input[3];
+   signal output ivc_output[3];
 
-   signal note_id <== step_in[0];
-   signal index <== step_in[1];
-   signal state_in <== step_in[2];
+   signal note_id <== ivc_input[0];
+   signal index <== ivc_input[1];
+   signal state_in <== ivc_input[2];
    signal input prevBlinder;
    signal input inBlinder;
    signal input changeBlinder;
@@ -60,13 +60,13 @@ template iou(){
    var recover_trans = Poseidon(3)([state_in, blinded_change, blinded_transfer]);
 
    // Check zero sum
-   component GreaterEqThan = GreaterEqThan(254);
+   component GreaterEqThan = GreaterEqThan(252);
    GreaterEqThan.in <== [inputVal, outputVal];
    GreaterEqThan.out === 1;
 
    var message = Poseidon(2)([state_in, recover_trans]);
 
-   // signature, message, pubkey
+   // EdDsa
    component sign = EdDSAPoseidonVerifier();
    sign.enabled <== 1;
    sign.M <== message;
@@ -76,7 +76,11 @@ template iou(){
    sign.R8x <== R[0];
    sign.R8y <== R[1];
 
+   //TODO: Correct note_id next step.
+   ivc_output[0] <== note_id + 1;
+   ivc_output[1] <== index + 1;
+   ivc_output[2] <== recover_trans;
 
 }
 
-component main { public [step_in] } = iou();
+component main { public [ivc_input] } = iou();
