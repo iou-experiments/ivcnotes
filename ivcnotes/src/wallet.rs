@@ -60,6 +60,7 @@ impl<E: IVC> CommReceiver<E> for Wallet<E> {
                 .map_err(|_| crate::Error::With("verification failed"))?;
             state_in = state_out;
         }
+        self.spendables.push(note_history.clone());
 
         Ok(())
     }
@@ -77,7 +78,7 @@ impl<E: IVC> Auth<E> {
         tx: &IssueTx<E::Field>,
     ) -> Result<SealedIssueTx<E::TE>, crate::Error> {
         let (note_hash, _) = h.note(tx.note());
-        let sighash = h.sighash(&Default::default(), &note_hash, &Default::default());
+        let sighash = h.sighash(&Default::default(), &Default::default(), &note_hash);
         let signature = self.sign(&sighash);
         Ok(tx.seal(signature))
     }
@@ -206,7 +207,7 @@ impl<E: IVC> Wallet<E> {
             .ok_or(crate::Error::With("bad spendable index"))?;
 
         let note_in = note_history.current_note;
-        let step = (note_history.steps.len() - 1) as u32;
+        let step = note_history.steps.len() as u32;
         let asset_hash = &note_history.asset.hash();
 
         // find output values

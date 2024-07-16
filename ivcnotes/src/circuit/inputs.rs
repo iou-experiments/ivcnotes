@@ -88,9 +88,9 @@ pub struct PublicInput<F: PrimeField> {
     pub(crate) asset_hash: AssetHash<F>,
     // sender of the note
     pub(crate) sender: Address<F>,
-    // input state `state = hash(sibling, spent)` or `state = hash(spent, sibling)`
+    // input state `state_in = hash(sibling, input_note)` or `state_in = hash(input_note, sibling)`
     pub(crate) state_in: StateHash<F>,
-    // output state `state = hash(note_out_0, note_out_1)`
+    // output state `state_out = hash(note_out_0, note_out_1)`
     pub(crate) state_out: StateHash<F>,
     // number of steps so far in the ivc propagation
     pub(crate) step: u32,

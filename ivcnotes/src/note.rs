@@ -76,11 +76,11 @@ impl<F: PrimeField + Absorb> Note<F> {
 // part of intermediate public inputs
 pub struct IVCStep<E: IVC> {
     pub(crate) proof: <<E as IVC>::Snark as SNARK<E::Field>>::Proof,
-    // previous state hash
+    // output state hash
     pub(crate) state: StateHash<E::Field>,
     // nullifier of spent note
     pub(crate) nullifier: Nullifier<E::Field>,
-    // previous owner, signer of the note
+    // previous owner, signer of the input note or issuer
     pub(crate) sender: Address<E::Field>,
 }
 
@@ -160,7 +160,7 @@ impl<E: IVC> NoteHistory<E> {
             NoteOutIndex::Out1 => h.state(&self.sibling, &blind_note_hash),
             NoteOutIndex::Issue => {
                 assert_eq!(self.sibling, BlindNoteHash::default());
-                h.state(&BlindNoteHash::default(), &self.current_note.parent_note)
+                h.state(&BlindNoteHash::default(), &blind_note_hash)
             }
         }
     }

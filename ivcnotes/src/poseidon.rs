@@ -168,7 +168,7 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
 
     pub fn sighash_issue_tx(&self, tx: &Note<F>) -> SigHash<F> {
         let (note, _) = self.note(tx);
-        self.sighash(&Default::default(), &note, &Default::default())
+        self.sighash(&Default::default(), &Default::default(), &note)
     }
 
     pub fn sighash(

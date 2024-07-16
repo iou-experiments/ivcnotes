@@ -1,8 +1,9 @@
 use crate::poseidon::PoseidonConfigs;
+use ark_crypto_primitives::snark::SNARK;
 use ark_crypto_primitives::sponge::constraints::CryptographicSpongeVar;
 use ark_crypto_primitives::sponge::poseidon::constraints::PoseidonSpongeVar;
+use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 use ark_crypto_primitives::sponge::Absorb;
-use ark_crypto_primitives::{snark::SNARK, sponge::poseidon::PoseidonConfig};
 use ark_ec::twisted_edwards::{Affine, TECurveConfig};
 use ark_ec::{AffineRepr, CurveConfig};
 use ark_ff::PrimeField;
@@ -112,7 +113,7 @@ impl<E: IVC> Prover<E> {
     ) -> Result<<<E as IVC>::Snark as SNARK<E::Field>>::Proof, crate::Error> {
         let circuit = Circuit::new(h, public, aux);
         <E as IVC>::Snark::prove(&self.pk, circuit, rng)
-            .map_err(|_err| crate::Error::With("verification failed"))
+            .map_err(|_err| crate::Error::With("proof generation failed"))
     }
 }
 

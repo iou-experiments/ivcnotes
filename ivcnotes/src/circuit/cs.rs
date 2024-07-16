@@ -58,9 +58,7 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
             .conditional_enforce_equal(&pi.asset_hash, &is_issue_tx)?;
 
         // recover the output state
-        let lhs = &const_zero;
-        let rhs = &blind_note_hash;
-        let state_out = cir.h.var_state(cs.clone(), lhs, rhs)?;
+        let state_out = cir.h.var_state(cs.clone(), &const_zero, &blind_note_hash)?;
 
         pi.state_out
             .conditional_enforce_equal(&state_out, &is_issue_tx)?;
@@ -68,7 +66,7 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
         // recover sighash
         let sighash = cir
             .h
-            .var_sighash(cs.clone(), &const_zero, &note_hash, &const_zero)?;
+            .var_sighash(cs.clone(), &const_zero, &const_zero, &note_hash)?;
 
         (sighash, note_hash, is_issue_tx)
     };
@@ -105,7 +103,7 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
             // recover blinded note hash
             let blind_note_hash = cir.h.var_blind_note(cs.clone(), &note_hash, &blind)?;
 
-            // receover the state
+            // recover input state
             let lhs = CondSelectGadget::conditionally_select(&is_i0, &blind_note_hash, &sibling)?;
             let rhs = CondSelectGadget::conditionally_select(&is_i1, &sibling, &blind_note_hash)?;
             let state_in = cir.h.var_state(cs.clone(), &lhs, &rhs)?;
@@ -191,7 +189,7 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
         CondSelectGadget::conditionally_select(&is_issue_tx, &sighash_issue, &sighash_split)?;
 
     // recover signature & verify
-    let sig_r = witness_point_in(cs.clone(), aux, |aux| *aux.signature.r())?;
+    let sig_r = witness_point_in(cs.clone(), aux, |e| *e.signature.r())?;
     let sig_s = NonNativeFieldVar::new_witness(cs.clone(), || {
         aux.map(|e| e.signature.s())
             .ok_or(SynthesisError::AssignmentMissing)
