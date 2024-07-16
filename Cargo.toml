@@ -1,7 +1,6 @@
 [workspace]
-default-members = ["cli"]
 members = [
-  "cli",
+  "ivcnotes",
 ]
 resolver = "2"
 
@@ -12,14 +11,26 @@ rust-version = "1.75"
 version = "0.1.0"
 
 [workspace.dependencies]
-ark-bn254 = {version = "0.4.0"}
-ark-crypto-primitives = {version = "^0.4.0", default-features = false, features = ["sponge", "crh", "merkle_tree"]}
+
+ark-crypto-primitives = {version = "0.4.0", default-features = false}
 ark-ec = {version = "^0.4.0", default-features = false}
 ark-ff = {version = "^0.4.0", default-features = false}
+ark-r1cs-std = {version = "0.4.0", default-features = false}
+ark-relations = {version = "0.4.0", default-features = false}
 ark-serialize = {version = "^0.4.0", default-features = false}
-ark-std = {version = "^0.4.0", default-features = false}
-arkeddsa = {git = "https://github.com/kilic/arkeddsa"}
-digest = "^0.10.0"
+ark-std = {version = "0.4.0", default-features = false}
+
+ark-bn254 = {version = "0.4.0"}
+ark-ed-on-bn254 = {version = "0.4.0"}
+
+digest = {version = "0.10", default-features = false}
+sha2 = {version = "0.10", default-features = false}
+
 rand = "0.8"
 rand_core = {version = "0.6", default-features = false}
-sha2 = {version = "0.10", default-features = false}
+
+# arkeddsa = {git = "https://github.com/kilic/arkeddsa"}
+arkeddsa = {path = "../../kilic/arkeddsa"}
+
+ivcnotes-cli = {version = "0.1.0", path = "./cli"}
+ivcnotes-cs = {version = "0.1.0", path = "./cs"}

@@ -1,8 +1,6 @@
-use crate::{id::Address, FWrap};
+use crate::{Address, AssetHash, FWrap};
 use ark_ff::PrimeField;
 use digest::Digest;
-
-crate::field_wrap!(AssetHash);
 
 #[derive(Debug, Clone, Copy)]
 pub struct Asset<F: PrimeField> {
