@@ -23,6 +23,7 @@ use rand::{CryptoRng, RngCore};
 
 pub mod cs;
 pub mod inputs;
+pub mod test;
 
 fn verify_signature<F: PrimeField, TE: TECurveConfig<BaseField = F>>(
     cs: impl Into<Namespace<F>>,
@@ -95,10 +96,12 @@ impl<'a, E: IVC> ConstraintSynthesizer<E::Field> for Circuit<'a, E> {
     }
 }
 
+#[derive(Clone)]
 pub struct Prover<E: IVC> {
     pub(crate) pk: <<E as IVC>::Snark as SNARK<E::Field>>::ProvingKey,
 }
 
+#[derive(Clone)]
 pub struct Verifier<E: IVC> {
     pub(crate) vk: <<E as IVC>::Snark as SNARK<E::Field>>::VerifyingKey,
 }

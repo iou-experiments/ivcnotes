@@ -4,7 +4,7 @@ use arkeddsa::{signature::Signature, PublicKey, SigningKey};
 use rand_core::CryptoRngCore;
 type PreHash = sha2::Sha512;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 // Signer has the signer key and eddsa poseidon config
 pub struct Signer<E: IVC> {
     signing_key: SigningKey<E::TE>,
@@ -32,6 +32,7 @@ impl<E: IVC> Signer<E> {
     }
 }
 
+#[derive(Clone)]
 // `Id` holds user secrets and public address
 pub struct Auth<E: IVC> {
     nullifier_key: NullifierKey<E::Field>,

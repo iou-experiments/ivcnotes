@@ -228,6 +228,7 @@ dependencies = [
 [[package]]
 name = "arkeddsa"
 version = "0.1.0"
+source = "git+https://github.com/kilic/arkeddsa#251918ba7fffb53a624152e7eed4ccf9ed294cef"
 dependencies = [
  "ark-crypto-primitives",
  "ark-ec",

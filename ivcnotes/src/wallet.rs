@@ -18,6 +18,7 @@ pub trait CommReceiver<E: IVC> {
     fn address(&self) -> &Address<E::Field>;
 }
 
+#[derive(Clone)]
 pub struct Wallet<E: IVC> {
     // receivables are transferable notes
     spendables: Vec<NoteHistory<E>>,
