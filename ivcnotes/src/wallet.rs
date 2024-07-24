@@ -5,7 +5,7 @@ use crate::{
         Prover, Verifier, IVC,
     },
     id::Auth,
-    note::{self, IVCStep, Note, NoteHistory, NoteOutIndex},
+    note::{IVCStep, Note, NoteHistory, NoteOutIndex},
     poseidon::PoseidonConfigs,
     tx::{IssueTx, SealedIssueTx, SealedSplitTx, SplitTx},
     Address, Blind, BlindNoteHash, FWrap,
@@ -130,7 +130,7 @@ impl<E: IVC + std::fmt::Debug> Wallet<E> {
             comm_receiver.address(),
             value,
             0,
-            &NoteOutIndex::Issue,
+            &NoteOutIndex::Out1,
             &crate::BlindNoteHash::default(),
             blind,
         );
@@ -165,7 +165,7 @@ impl<E: IVC + std::fmt::Debug> Wallet<E> {
             signature,
             nullifier_key,
             &Default::default(),
-            &NoteOutIndex::Issue,
+            &NoteOutIndex::Out1,
             0,
             value,
             &Default::default(),
@@ -189,8 +189,7 @@ impl<E: IVC + std::fmt::Debug> Wallet<E> {
         };
 
         // send the new history to the receivers
-        //comm_receiver.receive(&note_history)?;
-        self.spendables.push(note_history.clone());
+        comm_receiver.receive(&note_history)?;
 
         Ok(())
     }
@@ -212,13 +211,7 @@ impl<E: IVC + std::fmt::Debug> Wallet<E> {
         let step = note_history.steps.len() as u32;
         let asset_hash = &note_history.asset.hash();
 
-        println!("asset hash {:#?}", note_in.asset_hash);
-        println!("sender {:#?}", note_in.owner);
-        println!("value {:#?}", note_in.value);
-        println!("step {:#?}", note_in.step);
-        println!("parent note {:#?}", note_in.parent_note);
-        println!("index {:#?}", note_in.out_index);
-        // find output values
+        //find output values
         let value_out_0 = note_in
             .value
             .checked_sub(value)
@@ -263,7 +256,7 @@ impl<E: IVC + std::fmt::Debug> Wallet<E> {
             &sender,
             state_in,
             state_out,
-            step,
+            step - 1,
             &Default::default(),
         );
 

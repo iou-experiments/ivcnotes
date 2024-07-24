@@ -30,7 +30,7 @@ where
 impl<F: PrimeField + Absorb> IssueTx<F> {
     // Create a new IssueTx
     pub(crate) fn new(issuer: &Address<F>, note: &Note<F>) -> Self {
-        assert_eq!(note.out_index, NoteOutIndex::Issue);
+        assert_eq!(note.out_index, NoteOutIndex::Out1);
         assert_eq!(note.step, 0);
         assert_eq!(note.parent_note, BlindNoteHash::<F>::default());
 

@@ -7,8 +7,6 @@ use ark_ff::PrimeField;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NoteOutIndex {
-    // Original note hash the issue tag
-    Issue,
     // Output with index 0 conventionally this is the refund note
     Out0,
     // Output with index 1 conventionally this is the sent note
@@ -26,7 +24,6 @@ impl NoteOutIndex {
 impl From<&NoteOutIndex> for u8 {
     fn from(val: &NoteOutIndex) -> Self {
         match val {
-            NoteOutIndex::Issue => 0,
             NoteOutIndex::Out0 => 1,
             NoteOutIndex::Out1 => 2,
         }
@@ -162,15 +159,11 @@ impl<E: IVC> NoteHistory<E> {
 
     // Compute the state hash
     pub fn state(&self, h: &PoseidonConfigs<E::Field>) -> StateHash<E::Field> {
-        let (a, blind_note_hash) = h.note(&self.current_note);
+        let (_, blind_note_hash) = h.note(&self.current_note);
 
         match self.current_note.out_index {
             NoteOutIndex::Out0 => h.state(&blind_note_hash, &self.sibling),
             NoteOutIndex::Out1 => h.state(&self.sibling, &blind_note_hash),
-            NoteOutIndex::Issue => {
-                assert_eq!(self.sibling, BlindNoteHash::default());
-                h.state(&BlindNoteHash::default(), &blind_note_hash)
-            }
         }
     }
 }
