@@ -12,10 +12,13 @@ mod test {
     use ark_crypto_primitives::sponge::poseidon::{find_poseidon_ark_and_mds, PoseidonConfig};
     use ark_ff::PrimeField;
     use ark_groth16::Groth16;
+    use ark_std::test_rng;
+    use rand::rngs::StdRng;
+    use rand_core::{RngCore, SeedableRng};
 
     type F = ark_bn254::Fr;
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct Tester;
 
     impl IVC for Tester {
@@ -39,12 +42,12 @@ mod test {
             eddsa: config.clone(),
         };
 
-        let rng = &mut rand::thread_rng();
+        let mut rng = StdRng::seed_from_u64(test_rng().next_u64());
         let auth_1 = Auth::<Tester>::generate(&poseidon.clone(), &mut rng.clone()).unwrap();
         let auth_2 = Auth::<Tester>::generate(&poseidon.clone(), &mut rng.clone()).unwrap();
 
         let circuit = Circuit::<Tester>::empty(&poseidon);
-        let (pk, vk) = <Tester as IVC>::Snark::setup(circuit, rng).unwrap();
+        let (pk, vk) = <Tester as IVC>::Snark::setup(circuit, &mut rng).unwrap();
         let prover = Prover { pk };
         let verifier = Verifier { vk };
 
@@ -55,9 +58,9 @@ mod test {
         let asset = Asset::new(wallet_1.address(), &Terms::iou(1, 1));
 
         wallet_1
-            .issue(rng, &mut wallet_1.clone(), &asset, 50)
+            .issue(&mut rng, &mut wallet_1.clone(), &asset, 100)
             .unwrap();
 
-        wallet_1.split(rng, &mut wallet_2, 0, 30).unwrap();
+        wallet_1.split(&mut rng, &mut wallet_2, 0, 10).unwrap();
     }
 }

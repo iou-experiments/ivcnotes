@@ -5,7 +5,7 @@ use crate::{
         Prover, Verifier, IVC,
     },
     id::Auth,
-    note::{IVCStep, Note, NoteHistory, NoteOutIndex},
+    note::{self, IVCStep, Note, NoteHistory, NoteOutIndex},
     poseidon::PoseidonConfigs,
     tx::{IssueTx, SealedIssueTx, SealedSplitTx, SplitTx},
     Address, Blind, BlindNoteHash, FWrap,
@@ -98,7 +98,7 @@ impl<E: IVC> Auth<E> {
     }
 }
 
-impl<E: IVC> Wallet<E> {
+impl<E: IVC + std::fmt::Debug> Wallet<E> {
     pub fn new(
         auth: Auth<E>,
         poseidon: &PoseidonConfigs<E::Field>,
@@ -189,7 +189,8 @@ impl<E: IVC> Wallet<E> {
         };
 
         // send the new history to the receivers
-        comm_receiver.receive(&note_history)?;
+        //comm_receiver.receive(&note_history)?;
+        self.spendables.push(note_history.clone());
 
         Ok(())
     }
@@ -211,8 +212,13 @@ impl<E: IVC> Wallet<E> {
         let step = note_history.steps.len() as u32;
         let asset_hash = &note_history.asset.hash();
 
+        println!("asset hash {:#?}", note_in.asset_hash);
+        println!("sender {:#?}", note_in.owner);
+        println!("value {:#?}", note_in.value);
+        println!("step {:#?}", note_in.step);
+        println!("parent note {:#?}", note_in.parent_note);
+        println!("index {:#?}", note_in.out_index);
         // find output values
-
         let value_out_0 = note_in
             .value
             .checked_sub(value)
@@ -257,7 +263,7 @@ impl<E: IVC> Wallet<E> {
             &sender,
             state_in,
             state_out,
-            0,
+            step,
             &Default::default(),
         );
 

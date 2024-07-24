@@ -16,6 +16,7 @@ pub enum NoteOutIndex {
 }
 
 impl NoteOutIndex {
+    // Convert NoteOutIndex to a field element
     pub(crate) fn inner<F: ark_ff::Field>(&self) -> F {
         let u: u8 = self.into();
         u.into()
@@ -51,6 +52,7 @@ pub struct Note<F: PrimeField> {
 }
 
 impl<F: PrimeField + Absorb> Note<F> {
+    // Create a new Note
     pub fn new(
         asset_hash: &AssetHash<F>,
         owner: &Address<F>,
@@ -75,12 +77,13 @@ impl<F: PrimeField + Absorb> Note<F> {
 #[derive(Clone)]
 // part of intermediate public inputs
 pub struct IVCStep<E: IVC> {
+    // Proof of correctness
     pub(crate) proof: <<E as IVC>::Snark as SNARK<E::Field>>::Proof,
-    // output state hash
+    // Output state hash
     pub(crate) state: StateHash<E::Field>,
-    // nullifier of spent note
+    // Nullifier of spent note
     pub(crate) nullifier: Nullifier<E::Field>,
-    // previous owner, signer of the input note or issuer
+    // Previous owner, signer of the input note or issuer
     pub(crate) sender: Address<E::Field>,
 }
 
@@ -95,6 +98,7 @@ impl<E: IVC> std::fmt::Debug for IVCStep<E> {
 }
 
 impl<E: IVC> IVCStep<E> {
+    // Create a new IVCStep
     pub fn new(
         proof: &<<E as IVC>::Snark as SNARK<E::Field>>::Proof,
         state: &StateHash<E::Field>,
@@ -112,18 +116,18 @@ impl<E: IVC> IVCStep<E> {
 
 #[derive(Clone, Debug)]
 pub struct NoteHistory<E: IVC> {
-    // asset that defines the terms and issuer
+    // Asset that defines the terms and issuer
     pub(crate) asset: Asset<E::Field>,
-    // part of intermediate public inputs
+    // Part of intermediate public inputs
     pub(crate) steps: Vec<IVCStep<E>>,
-
-    // unspent note
+    // Unspent note
     pub(crate) current_note: Note<E::Field>,
-    // sibling of unspent note
+    // Sibling of unspent note
     pub(crate) sibling: BlindNoteHash<E::Field>,
 }
 
 impl<E: IVC> NoteHistory<E> {
+    // Create a new NoteHistory
     pub fn new(
         h: &PoseidonConfigs<E::Field>,
         asset: &Asset<E::Field>,
@@ -141,20 +145,25 @@ impl<E: IVC> NoteHistory<E> {
         }
     }
 
+    // Get the owner of the current note
     pub fn owner(&self) -> &Address<E::Field> {
         &self.current_note.owner
     }
 
+    // Get the output index of the current note
     pub fn out_index(&self) -> &NoteOutIndex {
         &self.current_note.out_index
     }
 
+    // Get the sibling of the current note
     pub fn sibling(&self) -> &BlindNoteHash<E::Field> {
         &self.sibling
     }
 
+    // Compute the state hash
     pub fn state(&self, h: &PoseidonConfigs<E::Field>) -> StateHash<E::Field> {
-        let (_, blind_note_hash) = h.note(&self.current_note);
+        let (a, blind_note_hash) = h.note(&self.current_note);
+
         match self.current_note.out_index {
             NoteOutIndex::Out0 => h.state(&blind_note_hash, &self.sibling),
             NoteOutIndex::Out1 => h.state(&self.sibling, &blind_note_hash),

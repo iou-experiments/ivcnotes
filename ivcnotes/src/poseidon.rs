@@ -27,7 +27,7 @@ pub trait ToCRH<F: PrimeField> {
 impl<F: PrimeField + Absorb> ToCRH<F> for Note<F> {
     type Output = F;
 
-    // serialize into field elements
+    // Serialize Note into field elements
     fn to_crh(&self) -> Vec<F> {
         let asset_hash = self.asset_hash.inner();
         let owner = self.owner.inner();
@@ -39,12 +39,13 @@ impl<F: PrimeField + Absorb> ToCRH<F> for Note<F> {
     }
 }
 
+// Convert field elements from one prime field to another
 pub(crate) fn field_cast<'a, F1: PrimeField, F2: PrimeField>(
     x: &[F1],
     dest: &'a mut Vec<F2>,
 ) -> Option<&'a mut Vec<F2>> {
     if F1::characteristic() != F2::characteristic() {
-        // "Trying to absorb non-native field elements."
+        // Return None if the fields are not compatible
         None
     } else {
         x.iter().for_each(|item| {
@@ -56,10 +57,12 @@ pub(crate) fn field_cast<'a, F1: PrimeField, F2: PrimeField>(
 }
 
 impl<F: PrimeField + Absorb> Absorb for Note<F> {
+    // Convert Note to sponge bytes
     fn to_sponge_bytes(&self, _: &mut Vec<u8>) {
         unimplemented!();
     }
 
+    // Convert Note to sponge field elements
     fn to_sponge_field_elements<FF: PrimeField>(&self, dest: &mut Vec<FF>) {
         field_cast(&self.to_crh(), dest).unwrap();
     }
@@ -77,6 +80,7 @@ pub struct PoseidonConfigs<F: PrimeField + Absorb> {
 }
 
 impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
+    // Compute ID commitment
     pub fn id_commitment<TE: TECurveConfig<BaseField = F>>(
         &self,
         nullifier_key: &NullifierKey<F>,
@@ -87,6 +91,7 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
         CRH::<F>::evaluate(&self.id, input).unwrap().into()
     }
 
+    // Compute variable ID commitment
     pub fn var_id_commitment<TE: TECurveConfig<BaseField = F>>(
         &self,
         cs: impl Into<Namespace<F>>,
@@ -100,18 +105,25 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
         CRHGadget::evaluate(&params, &input)
     }
 
+    // Compute note hash and blind note hash
     pub fn note(&self, note: &Note<F>) -> (NoteHash<F>, BlindNoteHash<F>) {
         let input = note.to_crh();
-        let note_hash = CRH::<F>::evaluate(&self.note, input).unwrap().into();
+
+        let note_hash = CRH::<F>::evaluate(&self.note, input.clone())
+            .unwrap()
+            .into();
         let blind = self.blind_note(&note_hash, &note.blind);
+
         (note_hash, blind)
     }
 
+    // Compute blind note hash
     pub fn blind_note(&self, note: &NoteHash<F>, blind: &Blind<F>) -> BlindNoteHash<F> {
         let input = vec![note.inner(), blind.inner()];
         CRH::<F>::evaluate(&self.blind, input).unwrap().into()
     }
 
+    // Compute variable note hash
     pub fn var_note(&self, cs: impl Into<Namespace<F>>, note: &NoteVar<F>) -> CSResult<FpVar<F>> {
         let cs = cs.into().cs();
         let input = note.to_crh();
@@ -119,6 +131,7 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
         CRHGadget::evaluate(&params, &input)
     }
 
+    // Compute variable blind note hash
     pub fn var_blind_note(
         &self,
         cs: impl Into<Namespace<F>>,
@@ -131,22 +144,26 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
         CRHGadget::evaluate(&params, &input)
     }
 
+    // Compute state hash from IssueTx
     pub fn state_out_from_issue_tx(&self, tx: &IssueTx<F>) -> StateHash<F> {
         let (_, blind_note_hash) = self.note(tx.note());
         self.state(&Default::default(), &blind_note_hash)
     }
 
+    // Compute state hash from SplitTx
     pub fn state_out_from_split_tx(&self, tx: &SplitTx<F>) -> StateHash<F> {
         let (_, blind_note_hash_0) = self.note(tx.note_out_0());
         let (_, blind_note_hash_1) = self.note(tx.note_out_1());
         self.state(&blind_note_hash_0, &blind_note_hash_1)
     }
 
+    // Compute state hash
     pub fn state(&self, out0: &BlindNoteHash<F>, out1: &BlindNoteHash<F>) -> StateHash<F> {
         let input = vec![out0.inner(), out1.inner()];
         CRH::<F>::evaluate(&self.state, input).unwrap().into()
     }
 
+    // Compute variable state hash
     pub fn var_state(
         &self,
         cs: impl Into<Namespace<F>>,
@@ -159,6 +176,7 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
         CRHGadget::evaluate(&params, &input)
     }
 
+    // Compute sighash for SplitTx
     pub fn sighash_split_tx(&self, tx: &SplitTx<F>) -> SigHash<F> {
         let (note_in, _) = self.note(&tx.note_in);
         let (note_out_0, _) = self.note(&tx.note_out_0);
@@ -166,11 +184,13 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
         self.sighash(&note_in, &note_out_0, &note_out_1)
     }
 
+    // Compute sighash for IssueTx
     pub fn sighash_issue_tx(&self, tx: &Note<F>) -> SigHash<F> {
         let (note, _) = self.note(tx);
         self.sighash(&Default::default(), &Default::default(), &note)
     }
 
+    // Compute sighash
     pub fn sighash(
         &self,
         input: &NoteHash<F>,
@@ -181,6 +201,7 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
         CRH::<F>::evaluate(&self.tx, input).unwrap().into()
     }
 
+    // Compute variable sighash
     pub fn var_sighash(
         &self,
         cs: impl Into<Namespace<F>>,
@@ -194,11 +215,13 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
         CRHGadget::evaluate(&params, &input)
     }
 
+    // Compute nullifier
     pub fn nullifier(&self, note_in: &NoteHash<F>, key: &NullifierKey<F>) -> Nullifier<F> {
         let input = vec![note_in.inner(), key.inner()];
         CRH::<F>::evaluate(&self.state, input).unwrap().into()
     }
 
+    // Compute variable nullifier
     pub fn var_nullifier(
         &self,
         cs: impl Into<Namespace<F>>,

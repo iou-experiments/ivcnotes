@@ -5,13 +5,16 @@ use rand_core::CryptoRngCore;
 type PreHash = sha2::Sha512;
 
 #[derive(Debug, Clone)]
-// Signer has the signer key and eddsa poseidon config
+/// Signer has the signer key and eddsa poseidon config
 pub struct Signer<E: IVC> {
+    // Signing key
     signing_key: SigningKey<E::TE>,
+    // Eddsa Poseidon
     poseidon: PoseidonConfig<E::Field>,
 }
 
 impl<E: IVC> Signer<E> {
+    // Generates a new Signer
     pub(crate) fn generate(
         poseidon: &PoseidonConfig<E::Field>,
         rng: &mut impl CryptoRngCore,
@@ -23,20 +26,25 @@ impl<E: IVC> Signer<E> {
         }
     }
 
+    // Sign a given message with the signing key
     pub(crate) fn sign(&self, msg: &E::Field) -> Signature<E::TE> {
         self.signing_key.sign::<PreHash, _>(&self.poseidon, &[*msg])
     }
 
+    // Returns Public key of the signing key
     pub(crate) fn public_key(&self) -> &PublicKey<E::TE> {
         self.signing_key.public_key()
     }
 }
 
 #[derive(Clone)]
-// `Id` holds user secrets and public address
+/// `Id` holds user secrets and public address
 pub struct Auth<E: IVC> {
+    // Nullifier Key to generate unique Nullifier
     nullifier_key: NullifierKey<E::Field>,
+    // Signer of the ID
     signer: Signer<E>,
+    // Address of the ID
     address: Address<E::Field>,
 }
 

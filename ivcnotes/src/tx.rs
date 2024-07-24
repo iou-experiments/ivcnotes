@@ -10,9 +10,9 @@ use crate::{
 
 #[derive(Debug, Clone, Copy)]
 pub struct IssueTx<F: PrimeField> {
-    // the first note in the propagation
+    // The first note in the propagation
     pub(crate) note: Note<F>,
-    // issuer address
+    // Issuer address
     pub(crate) issuer: Address<F>,
 }
 
@@ -21,13 +21,14 @@ pub struct SealedIssueTx<TE: TECurveConfig + Clone>
 where
     TE::BaseField: PrimeField + Absorb,
 {
-    // wrap the transaction
+    // Wrapped transaction
     pub(crate) tx: IssueTx<TE::BaseField>,
-    // additionally store the signature
+    // Stored signature
     pub(crate) signature: Signature<TE>,
 }
 
 impl<F: PrimeField + Absorb> IssueTx<F> {
+    // Create a new IssueTx
     pub(crate) fn new(issuer: &Address<F>, note: &Note<F>) -> Self {
         assert_eq!(note.out_index, NoteOutIndex::Issue);
         assert_eq!(note.step, 0);
@@ -39,10 +40,12 @@ impl<F: PrimeField + Absorb> IssueTx<F> {
         }
     }
 
+    // Get the note from IssueTx
     pub(crate) fn note(&self) -> &Note<F> {
         &self.note
     }
 
+    // Seal the IssueTx with a signature
     pub(crate) fn seal<TE: TECurveConfig<BaseField = F> + Clone>(
         self,
         sig: Signature<TE>,
@@ -55,14 +58,17 @@ impl<TE: TECurveConfig + Clone> SealedIssueTx<TE>
 where
     TE::BaseField: PrimeField + Absorb,
 {
+    // Create a new SealedIssueTx
     pub(crate) fn new(tx: IssueTx<TE::BaseField>, signature: Signature<TE>) -> Self {
         SealedIssueTx { tx, signature }
     }
 
+    // Get the transaction from SealedIssueTx
     pub(crate) fn tx(&self) -> &IssueTx<TE::BaseField> {
         &self.tx
     }
 
+    // Get the signature from SealedIssueTx
     pub(crate) fn signature(&self) -> &Signature<TE> {
         &self.signature
     }
@@ -70,8 +76,11 @@ where
 
 #[derive(Debug, Clone, Copy)]
 pub struct SplitTx<F: PrimeField> {
+    // Input note
     pub(crate) note_in: Note<F>,
+    // Output note 0
     pub(crate) note_out_0: Note<F>,
+    // Output note 1
     pub(crate) note_out_1: Note<F>,
 }
 
@@ -80,15 +89,16 @@ pub struct SealedSplitTx<TE: TECurveConfig + Clone>
 where
     TE::BaseField: PrimeField + Absorb,
 {
-    // wrap the transaction
+    // Wrapped transaction
     pub(crate) tx: SplitTx<TE::BaseField>,
-    // store the signature
+    // Stored signature
     pub(crate) signature: Signature<TE>,
-    // and the nullifier
+    // Stored nullifier
     pub(crate) nullifier: Nullifier<TE::BaseField>,
 }
 
 impl<F: PrimeField + Absorb> SplitTx<F> {
+    // Create a new SplitTx
     pub(crate) fn new(note_in: &Note<F>, note_out_0: &Note<F>, note_out_1: &Note<F>) -> Self {
         Self {
             note_in: *note_in,
@@ -97,6 +107,7 @@ impl<F: PrimeField + Absorb> SplitTx<F> {
         }
     }
 
+    // Seal the SplitTx with a signature and nullifier
     pub(crate) fn seal<TE: TECurveConfig<BaseField = F> + Clone>(
         &self,
         sig: &Signature<TE>,
@@ -105,10 +116,12 @@ impl<F: PrimeField + Absorb> SplitTx<F> {
         SealedSplitTx::new(self, sig, nullifier)
     }
 
+    // Get the output note 0 from SplitTx
     pub(crate) fn note_out_0(&self) -> &Note<F> {
         &self.note_out_0
     }
 
+    // Get the output note 1 from SplitTx
     pub(crate) fn note_out_1(&self) -> &Note<F> {
         &self.note_out_1
     }
@@ -118,6 +131,7 @@ impl<TE: TECurveConfig + Clone> SealedSplitTx<TE>
 where
     TE::BaseField: PrimeField + Absorb,
 {
+    // Create a new SealedSplitTx
     pub(crate) fn new(
         tx: &SplitTx<TE::BaseField>,
         signature: &Signature<TE>,
@@ -130,18 +144,22 @@ where
         }
     }
 
+    // Get the nullifier from SealedSplitTx
     pub(crate) fn nullifier(&self) -> &Nullifier<TE::BaseField> {
         &self.nullifier
     }
 
+    // Get the signature from SealedSplitTx
     pub(crate) fn signature(&self) -> &Signature<TE> {
         &self.signature
     }
 
+    // Get the output note 0 from SealedSplitTx
     pub(crate) fn note_out_0(&self) -> &Note<TE::BaseField> {
         self.tx.note_out_0()
     }
 
+    // Get the output note 1 from SealedSplitTx
     pub(crate) fn note_out_1(&self) -> &Note<TE::BaseField> {
         self.tx.note_out_1()
     }
