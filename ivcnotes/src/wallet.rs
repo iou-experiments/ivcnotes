@@ -256,19 +256,16 @@ impl<E: IVC + std::fmt::Debug> Wallet<E> {
         let (_, blind_note_hash_1) = self.h.note(sealed.note_out_1());
         let state_out = &self.h.state(&blind_note_hash_0, &blind_note_hash_1);
 
-        let public_inputs = PublicInput::new(
-            asset_hash,
-            &sender,
-            state_in,
-            state_out,
-            step,
-            &Default::default(),
-        );
+        let nullifier_key = self.auth.nullifier_key();
+        let nullifier = &self.h.nullifier(&blind_note_hash, &nullifier_key);
+
+        // Public inputs
+        let public_inputs =
+            PublicInput::new(asset_hash, &sender, state_in, state_out, step, nullifier);
 
         let receiver = comm_receiver.address();
         let public_key = self.auth.public_key();
         let signature = sealed.signature();
-        let nullifier_key = self.auth.nullifier_key();
         let parent = &note_in.parent_note;
         let input_index = &note_in.out_index; // TODO: issue index is not good for first split tx?
         let value_in = note_in.value;

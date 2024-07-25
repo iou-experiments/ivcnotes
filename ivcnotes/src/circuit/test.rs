@@ -46,6 +46,7 @@ mod test {
         let auth_1 = Auth::<Tester>::generate(&poseidon.clone(), &mut rng.clone()).unwrap();
         let auth_2 = Auth::<Tester>::generate(&poseidon.clone(), &mut rng.clone()).unwrap();
         let auth_3 = Auth::<Tester>::generate(&poseidon.clone(), &mut rng.clone()).unwrap();
+        let auth_4 = Auth::<Tester>::generate(&poseidon.clone(), &mut rng.clone()).unwrap();
 
         let circuit = Circuit::<Tester>::empty(&poseidon);
         let (pk, vk) = <Tester as IVC>::Snark::setup(circuit, &mut rng).unwrap();
@@ -58,13 +59,21 @@ mod test {
             Wallet::<Tester>::new(auth_2, &poseidon, prover.clone(), verifier.clone());
         let mut wallet_3 =
             Wallet::<Tester>::new(auth_3, &poseidon, prover.clone(), verifier.clone());
+        let mut wallet_4 =
+            Wallet::<Tester>::new(auth_4, &poseidon, prover.clone(), verifier.clone());
 
-        let asset = Asset::new(wallet_1.address(), &Terms::iou(1, 1));
+        let asset_1 = Asset::new(wallet_1.address(), &Terms::iou(1, 1));
+        let asset_2 = Asset::new(wallet_2.address(), &Terms::iou(2, 2));
 
         wallet_1
-            .issue(&mut rng, &mut wallet_2, &asset, 100)
+            .issue(&mut rng, &mut wallet_2, &asset_1, 100)
             .unwrap();
-
-        wallet_2.split(&mut rng, &mut wallet_3, 0, 10).unwrap();
+        wallet_2.split(&mut rng, &mut wallet_3, 0, 60).unwrap();
+        wallet_3.split(&mut rng, &mut wallet_4, 0, 25).unwrap();
+        wallet_2
+            .issue(&mut rng, &mut wallet_4, &asset_2, 825)
+            .unwrap();
+        wallet_4.split(&mut rng, &mut wallet_1, 1, 799).unwrap();
+        wallet_4.split(&mut rng, &mut wallet_3, 0, 25).unwrap();
     }
 }

@@ -124,9 +124,9 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
                 .h
                 .var_nullifier(cs.clone(), &note_hash, &nullifier_key)?;
 
-            // // match with public input
-            // pi.nullifier
-            //     .conditional_enforce_equal(&nullifier, &is_split_tx)?;
+            // match with public input
+            pi.nullifier
+                .conditional_enforce_equal(&nullifier, &is_split_tx)?;
 
             (blind_note_hash, note_hash, value)
         };
@@ -154,7 +154,7 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
             let max = FpVar::new_constant(cs.clone(), E::Field::from(u64::MAX))?;
             // TODO: Because issue circuit can access here it calculates 0 - 100 and returns an error
             // value_out_0.enforce_cmp(&value_out_1, Ordering::Less, true)?;
-            // value_out_1.enforce_cmp(&max, Ordering::Less, true)?; // maybe not required
+            value_out_1.enforce_cmp(&max, Ordering::Less, true)?; // maybe not required
 
             let blind_0 = witness_in(cs.clone(), aux, |e| e.blind_out_0)?;
             let receiver = witness_in(cs.clone(), aux, |e| e.receiver)?;
@@ -206,7 +206,7 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
                 .ok_or(SynthesisError::AssignmentMissing)
         })?;
 
-    // //verify_signature(cs.clone(), &cir.h.eddsa, &pubkey, &sig_r, &sig_s, &sighash)?;
+    verify_signature(cs.clone(), &cir.h.eddsa, &pubkey, &sig_r, &sig_s, &sighash)?;
 
     Ok(())
 }
