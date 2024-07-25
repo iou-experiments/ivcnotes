@@ -24,8 +24,8 @@ impl NoteOutIndex {
 impl From<&NoteOutIndex> for u8 {
     fn from(val: &NoteOutIndex) -> Self {
         match val {
-            NoteOutIndex::Out0 => 1,
-            NoteOutIndex::Out1 => 2,
+            NoteOutIndex::Out0 => 0,
+            NoteOutIndex::Out1 => 1,
         }
     }
 }

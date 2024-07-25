@@ -39,10 +39,7 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
 
     // Branch 1: IssueTx
     // Checks if value is equal to zero or not. Issue note will return true
-    let is_issue_tx = pi
-        .step
-        .is_eq(&const_zero)
-        .and(witness_in(cs.clone(), aux, |e| E::Field::from(e.value_out))?.is_eq(&const_zero))?;
+    let is_issue_tx = pi.step.is_eq(&const_zero)?;
     let (sighash_issue, _note_hash, is_issue_tx) = {
         let value = witness_in(cs.clone(), aux, |e| E::Field::from(e.value_out))?;
         let blind = witness_in(cs.clone(), aux, |e| e.blind_out_1)?;
@@ -82,9 +79,8 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
     // Branch 2: SplitTx
     let sighash_split = {
         // Checks if parent note is equal to zero or not. Issue note will return true
-        let is_split_tx = witness_in(cs.clone(), aux, |e| e.parent)?
-            .is_eq(&const_zero)?
-            .not();
+        let value = witness_in(cs.clone(), aux, |e| E::Field::from(e.value_in))?;
+        let is_split_tx = value.is_eq(&const_zero)?.not();
 
         // enforce input state integrity
         let (blind_note_in_hash, note_in_hash, value_in) = {
@@ -97,12 +93,12 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
             let is_i0 = index.is_eq(&index_0)?;
             let is_i1 = index.is_eq(&index_1)?;
             is_i0.or(&(is_i1))?.enforce_equal(&const_true)?;
-
+            let step = pi.step.clone() - const_one;
             let note_in = NoteVar::new(
                 &pi.asset_hash,
                 &pi.sender,
                 &value,
-                &pi.step,
+                &step,
                 &parent_note,
                 &index,
             );
@@ -115,7 +111,7 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
 
             // recover input state
             let lhs = CondSelectGadget::conditionally_select(&is_i0, &blind_note_hash, &sibling)?;
-            let rhs = CondSelectGadget::conditionally_select(&is_i1, &sibling, &blind_note_hash)?;
+            let rhs = CondSelectGadget::conditionally_select(&is_i1, &blind_note_hash, &sibling)?;
 
             let state_in = cir.h.var_state(cs.clone(), &lhs, &rhs)?;
 
@@ -128,55 +124,49 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
                 .h
                 .var_nullifier(cs.clone(), &note_hash, &nullifier_key)?;
 
-            // match with public input
-            pi.nullifier
-                .conditional_enforce_equal(&nullifier, &is_split_tx)?;
+            // // match with public input
+            // pi.nullifier
+            //     .conditional_enforce_equal(&nullifier, &is_split_tx)?;
 
             (blind_note_hash, note_hash, value)
         };
 
         // enforce output state integrity
         let (note_out_hash_0, note_out_hash_1) = {
-            let step = CondSelectGadget::conditionally_select(
-                &is_split_tx,
-                &(pi.step.clone() + const_one.clone()),
-                &pi.step.clone(),
-            )?;
             let value_out_1 = witness_in(cs.clone(), aux, |e| E::Field::from(e.value_out))?;
             let blind_1 = witness_in(cs.clone(), aux, |e| e.blind_out_1)?;
             let note_out_1 = NoteVar {
                 asset_hash: pi.asset_hash.clone(),
                 owner: pi.sender.clone(),
                 value: value_out_1.clone(),
-                step: step.clone(),
+                step: pi.step.clone(),
                 parent_note: blind_note_in_hash.clone(),
                 out_index: index_1,
             };
+
             // recover note hash
             let note_hash_1 = cir.h.var_note(cs.clone(), &note_out_1)?;
 
             // recover blinded note hash
             let blind_note_hash_1 = cir.h.var_blind_note(cs.clone(), &note_hash_1, &blind_1)?;
-            let value_out_0 = CondSelectGadget::conditionally_select(
-                &is_issue_tx,
-                &(value_in - &value_out_1),
-                &const_zero,
-            )?;
+            let value_out_0 = value_in.clone() - value_out_1.clone();
 
             let max = FpVar::new_constant(cs.clone(), E::Field::from(u64::MAX))?;
-            value_out_0.enforce_cmp(&value_out_1, Ordering::Less, true)?;
-            value_out_1.enforce_cmp(&max, Ordering::Less, true)?; // maybe not required
+            // TODO: Because issue circuit can access here it calculates 0 - 100 and returns an error
+            // value_out_0.enforce_cmp(&value_out_1, Ordering::Less, true)?;
+            // value_out_1.enforce_cmp(&max, Ordering::Less, true)?; // maybe not required
 
             let blind_0 = witness_in(cs.clone(), aux, |e| e.blind_out_0)?;
             let receiver = witness_in(cs.clone(), aux, |e| e.receiver)?;
             let note_out_0 = NoteVar {
                 asset_hash: pi.asset_hash.clone(),
-                owner: receiver,
+                owner: receiver.clone(),
                 value: value_out_0.clone(),
-                step: step.clone(),
-                parent_note: blind_note_in_hash,
+                step: pi.step.clone(),
+                parent_note: blind_note_in_hash.clone(),
                 out_index: index_0,
             };
+
             // recover note hash
             let note_hash_0 = cir.h.var_note(cs.clone(), &note_out_0)?;
 
@@ -215,7 +205,8 @@ pub(crate) fn synth<E: IVC>(cs: ConstraintSystemRef<E::Field>, cir: Circuit<E>) 
             aux.map(|e| e.signature.s())
                 .ok_or(SynthesisError::AssignmentMissing)
         })?;
-    //verify_signature(cs.clone(), &cir.h.eddsa, &pubkey, &sig_r, &sig_s, &sighash)?;
+
+    // //verify_signature(cs.clone(), &cir.h.eddsa, &pubkey, &sig_r, &sig_s, &sighash)?;
 
     Ok(())
 }

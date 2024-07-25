@@ -108,7 +108,6 @@ impl<F: PrimeField + Absorb> PoseidonConfigs<F> {
     // Compute note hash and blind note hash
     pub fn note(&self, note: &Note<F>) -> (NoteHash<F>, BlindNoteHash<F>) {
         let input = note.to_crh();
-
         let note_hash = CRH::<F>::evaluate(&self.note, input.clone())
             .unwrap()
             .into();

@@ -1,3 +1,5 @@
+use std::ptr::null;
+
 use crate::{
     asset::Asset,
     circuit::{
@@ -80,6 +82,7 @@ impl<E: IVC> Auth<E> {
     ) -> Result<SealedIssueTx<E::TE>, crate::Error> {
         let (note_hash, _) = h.note(tx.note());
         let sighash = h.sighash(&Default::default(), &Default::default(), &note_hash);
+
         let signature = self.sign(&sighash);
         Ok(tx.seal(signature))
     }
@@ -218,25 +221,27 @@ impl<E: IVC + std::fmt::Debug> Wallet<E> {
             .ok_or(crate::Error::With("insufficient funds"))?;
         let value_out_1 = value;
 
+        let (blind_note_hash, _) = self.h.note(&note_history.current_note);
+        let parent = self.h.blind_note(&blind_note_hash, &note_in.blind);
         // create change note, output 0
         let note_out_0 = Note::new(
             asset_hash,
-            &sender,
+            comm_receiver.address(),
             value_out_0,
             step,
             &NoteOutIndex::Out0,
-            &note_in.parent_note,
+            &parent,
             Blind::rand(rng),
         );
 
         // crate transfer note, output 1
         let note_out_1 = Note::new(
             asset_hash,
-            comm_receiver.address(),
+            &sender,
             value_out_1,
             step,
             &NoteOutIndex::Out1,
-            &note_in.parent_note,
+            &parent,
             Blind::rand(rng),
         );
 
@@ -256,7 +261,7 @@ impl<E: IVC + std::fmt::Debug> Wallet<E> {
             &sender,
             state_in,
             state_out,
-            step - 1,
+            step,
             &Default::default(),
         );
 
