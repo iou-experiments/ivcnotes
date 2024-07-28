@@ -1,5 +1,10 @@
-use crate::{circuit::IVC, poseidon::PoseidonConfigs, Address, FWrap, NullifierKey, SigHash};
-use ark_crypto_primitives::{sponge::poseidon::PoseidonConfig, Error};
+use crate::{
+    cipher::{CipherText, EncryptedData},
+    circuit::IVC,
+    poseidon::PoseidonConfigs,
+    Address, Error, FWrap, NullifierKey, SigHash,
+};
+use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
 use arkeddsa::{signature::Signature, PublicKey, SigningKey};
 use rand_core::CryptoRngCore;
 type PreHash = sha2::Sha512;
@@ -23,8 +28,8 @@ impl<E: IVC> Signer<E> {
         }
     }
 
-    pub(crate) fn sign(&self, msg: &E::Field) -> Signature<E::TE> {
-        self.signing_key.sign::<PreHash, _>(&self.poseidon, &[*msg])
+    pub(crate) fn sign<A: Absorb>(&self, msg: &[A]) -> Signature<E::TE> {
+        self.signing_key.sign::<PreHash, A>(&self.poseidon, msg)
     }
 
     pub(crate) fn public_key(&self) -> &PublicKey<E::TE> {
@@ -54,6 +59,24 @@ impl<E: IVC> Auth<E> {
         })
     }
 
+    pub(crate) fn encrypt<T: CipherText>(
+        &self,
+        receiver: &PublicKey<E::TE>,
+        data: &T,
+    ) -> EncryptedData {
+        let shared = self.shared_key(receiver);
+        T::encrypt(&shared, data)
+    }
+
+    pub(crate) fn decrypt<T: CipherText>(
+        &self,
+        sender: &PublicKey<E::TE>,
+        data: &EncryptedData,
+    ) -> Result<T, Error> {
+        let shared = self.shared_key(sender);
+        T::decrypt(&shared, data)
+    }
+
     pub(crate) fn address(&self) -> &Address<E::Field> {
         &self.address
     }
@@ -66,7 +89,16 @@ impl<E: IVC> Auth<E> {
         self.signer.public_key()
     }
 
-    pub(crate) fn sign(&self, msg: &SigHash<E::Field>) -> Signature<E::TE> {
-        self.signer.sign(&msg.inner())
+    pub(crate) fn shared_key(&self, receiver: &PublicKey<E::TE>) -> [u8; 32] {
+        // TODO use different key for shared key
+        self.signer.signing_key.shared_key::<sha2::Sha512>(receiver)
+    }
+
+    pub(crate) fn sign_tx(&self, msg: &SigHash<E::Field>) -> Signature<E::TE> {
+        self.signer.sign(&[msg.inner()])
+    }
+
+    pub(crate) fn sign<A: Absorb>(&self, msg: &[A]) -> Signature<E::TE> {
+        self.signer.sign(msg)
     }
 }

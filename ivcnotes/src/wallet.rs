@@ -7,67 +7,80 @@ use crate::{
     id::Auth,
     note::{IVCStep, Note, NoteHistory, NoteOutIndex},
     poseidon::PoseidonConfigs,
+    service::Comm,
     tx::{IssueTx, SealedIssueTx, SealedSplitTx, SplitTx},
     Address, Blind, BlindNoteHash, FWrap,
 };
-
+use arkeddsa::PublicKey;
 use rand::{CryptoRng, RngCore};
 
-pub trait CommReceiver<E: IVC> {
-    fn receive(&mut self, history: &NoteHistory<E>) -> Result<(), crate::Error>;
-    fn address(&self) -> &Address<E::Field>;
+#[derive(Debug, Clone)]
+pub struct Contact<E: IVC> {
+    pub(crate) address: Address<E::Field>,
+    pub(crate) username: String,
+    pub(crate) public_key: PublicKey<E::TE>,
+}
+
+impl<E: IVC> PartialEq for Contact<E> {
+    fn eq(&self, other: &Self) -> bool {
+        self.username == other.username
+    }
+}
+
+impl<E: IVC> Eq for Contact<E> {}
+
+impl<E: IVC> Ord for Contact<E> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.username.cmp(&other.username)
+    }
+}
+
+impl<E: IVC> PartialOrd for Contact<E> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Clone)]
+pub struct AddressBook<E: IVC> {
+    contacts: Vec<Contact<E>>,
+}
+
+impl<E: IVC> Default for AddressBook<E> {
+    fn default() -> Self {
+        Self { contacts: vec![] }
+    }
+}
+
+impl<E: IVC> AddressBook<E> {
+    pub fn find_address(&self, address: &Address<E::Field>) -> Option<&Contact<E>> {
+        self.contacts.iter().find(|c| c.address == *address)
+    }
+
+    pub fn find_username(&self, username: &str) -> Option<&Contact<E>> {
+        self.contacts.iter().find(|c| c.username == username)
+    }
+
+    pub fn new_contact(&mut self, contact: &Contact<E>) {
+        self.contacts.push(contact.clone());
+    }
 }
 
 pub struct Wallet<E: IVC> {
     // receivables are transferable notes
-    spendables: Vec<NoteHistory<E>>,
+    pub(crate) spendables: Vec<NoteHistory<E>>,
     // auth object that holds private keys
-    auth: Auth<E>,
+    pub(crate) auth: Auth<E>,
     // configs for poseidion hasher
-    h: PoseidonConfigs<E::Field>,
-    // prover
-    prover: Prover<E>,
-    // verifier
-    verifier: Verifier<E>,
-}
-
-impl<E: IVC> CommReceiver<E> for Wallet<E> {
-    fn receive(&mut self, note_history: &NoteHistory<E>) -> Result<(), crate::Error> {
-        (note_history.current_note.owner == *self.address())
-            .then_some(())
-            .ok_or(crate::Error::With("not me"))?;
-
-        let asset_hash = &note_history.asset.hash();
-        let mut state_in = &asset_hash.as_ref().into();
-
-        for (i, step) in note_history.steps.iter().enumerate() {
-            let state_out = &step.state;
-            let public_input = PublicInput::new(
-                asset_hash,
-                &step.sender,
-                state_in,
-                state_out,
-                i as u32,
-                &step.nullifier,
-            );
-            if i == note_history.steps.len() - 1 {
-                (note_history.state(&self.h) == *state_out)
-                    .then_some(())
-                    .ok_or(crate::Error::With("bad current state"))?;
-            }
-            self.verifier
-                .verify_proof(&step.proof, &public_input)
-                .map_err(|_| crate::Error::With("verification failed"))?;
-            state_in = state_out;
-        }
-        self.spendables.push(note_history.clone());
-
-        Ok(())
-    }
-
-    fn address(&self) -> &Address<E::Field> {
-        self.auth.address()
-    }
+    pub(crate) h: PoseidonConfigs<E::Field>,
+    // ivc prover
+    pub(crate) prover: Prover<E>,
+    // ivc verifier
+    pub(crate) verifier: Verifier<E>,
+    // known users/peers
+    pub(crate) address_book: AddressBook<E>,
+    // communications
+    pub(crate) comm: Comm<E>,
 }
 
 impl<E: IVC> Auth<E> {
@@ -79,7 +92,7 @@ impl<E: IVC> Auth<E> {
     ) -> Result<SealedIssueTx<E::TE>, crate::Error> {
         let (note_hash, _) = h.note(tx.note());
         let sighash = h.sighash(&Default::default(), &Default::default(), &note_hash);
-        let signature = self.sign(&sighash);
+        let signature = self.sign_tx(&sighash);
         Ok(tx.seal(signature))
     }
 
@@ -90,7 +103,7 @@ impl<E: IVC> Auth<E> {
         tx: &SplitTx<E::Field>,
     ) -> Result<SealedSplitTx<E::TE>, crate::Error> {
         let sighash = h.sighash_split_tx(tx);
-        let signature = self.sign(&sighash);
+        let signature = self.sign_tx(&sighash);
         let (note_in, _) = h.note(&tx.note_in);
         let nullifier = h.nullifier(&note_in, self.nullifier_key());
         Ok(tx.seal(&signature, &nullifier))
@@ -103,6 +116,7 @@ impl<E: IVC> Wallet<E> {
         poseidon: &PoseidonConfigs<E::Field>,
         prover: Prover<E>,
         verifier: Verifier<E>,
+        comm: Comm<E>,
     ) -> Self {
         Self {
             spendables: vec![],
@@ -110,23 +124,31 @@ impl<E: IVC> Wallet<E> {
             h: poseidon.clone(),
             prover,
             verifier,
+            comm,
+            address_book: AddressBook::default(),
         }
+    }
+
+    pub fn address(&self) -> &Address<E::Field> {
+        self.auth.address()
     }
 
     pub fn issue<R: RngCore + CryptoRng>(
         &mut self,
         rng: &mut R,
-        comm_receiver: &mut impl CommReceiver<E>,
         asset: &Asset<E::Field>,
         value: u64,
+        receiver: &str,
     ) -> Result<(), crate::Error> {
+        let receiver = self.find_contact_by_username(receiver)?;
+
         let asset_hash = &asset.hash();
         // draw random blinding factor
-        let blind = Blind::<E::Field>::rand(rng);
+        let blind = crate::Blind::<E::Field>::rand(rng);
         // create new note
         let note = Note::new(
             &asset.hash(),
-            comm_receiver.address(),
+            &receiver.address,
             value,
             0,
             &NoteOutIndex::Issue,
@@ -154,12 +176,12 @@ impl<E: IVC> Wallet<E> {
         );
 
         // contruct aux inputs
-        let receiver = comm_receiver.address();
+
         let public_key = self.auth.public_key();
         let signature = sealed.signature();
         let nullifier_key = self.auth.nullifier_key();
         let aux_inputs: AuxInputs<E> = AuxInputs::new(
-            receiver,
+            &receiver.address,
             public_key,
             signature,
             nullifier_key,
@@ -187,8 +209,10 @@ impl<E: IVC> Wallet<E> {
             sibling: BlindNoteHash::default(),
         };
 
-        // send the new history to the receivers
-        comm_receiver.receive(&note_history)?;
+        // send the new history to the receiver
+        self.send_note(&receiver, &note_history)?;
+
+        // TODO: save the note as liability
 
         Ok(())
     }
@@ -196,10 +220,12 @@ impl<E: IVC> Wallet<E> {
     pub fn split<R: RngCore + CryptoRng>(
         &mut self,
         rng: &mut R,
-        comm_receiver: &mut impl CommReceiver<E>,
         spendable_index: usize,
         value: u64,
+        receiver: &str,
     ) -> Result<(), crate::Error> {
+        let receiver = self.find_contact_by_username(receiver)?;
+
         let sender = *self.address();
         let note_history = self
             .spendables
@@ -232,7 +258,7 @@ impl<E: IVC> Wallet<E> {
         // crate transfer note, output 1
         let note_out_1 = Note::new(
             asset_hash,
-            comm_receiver.address(),
+            &receiver.address,
             value_out_1,
             step,
             &NoteOutIndex::Out1,
@@ -260,7 +286,6 @@ impl<E: IVC> Wallet<E> {
             &Default::default(),
         );
 
-        let receiver = comm_receiver.address();
         let public_key = self.auth.public_key();
         let signature = sealed.signature();
         let nullifier_key = self.auth.nullifier_key();
@@ -270,7 +295,7 @@ impl<E: IVC> Wallet<E> {
         let value_out = value_out_1;
         let sibling = &note_history.sibling;
         let aux_inputs: AuxInputs<E> = AuxInputs::new(
-            receiver,
+            &receiver.address,
             public_key,
             signature,
             nullifier_key,
@@ -307,7 +332,51 @@ impl<E: IVC> Wallet<E> {
         let mut note_history_1 = note_history_0.clone();
         note_history_1.current_note = note_out_1;
         note_history_1.sibling = blind_note_hash_0;
-        comm_receiver.receive(&note_history_1)?;
+
+        // send the new history to the receiver
+        self.send_note(&receiver, &note_history_1)?;
+
+        Ok(())
+    }
+
+    pub(crate) fn verify_incoming(
+        &mut self,
+        note_history: &NoteHistory<E>,
+    ) -> Result<(), crate::Error> {
+        let incoming_note = note_history.current_note;
+        let exists = self
+            .spendables
+            .iter()
+            .any(|nh| nh.current_note == incoming_note);
+
+        if exists {
+            return Ok(());
+        }
+
+        let asset_hash = &note_history.asset.hash();
+        let mut state_in = &asset_hash.as_ref().into();
+
+        for (i, step) in note_history.steps.iter().enumerate() {
+            let state_out = &step.state;
+            let public_input = PublicInput::new(
+                asset_hash,
+                &step.sender,
+                state_in,
+                state_out,
+                i as u32,
+                &step.nullifier,
+            );
+            if i == note_history.steps.len() - 1 {
+                (note_history.state(&self.h) == *state_out)
+                    .then_some(())
+                    .ok_or(crate::Error::With("bad current state"))?;
+            }
+            self.verifier
+                .verify_proof(&step.proof, &public_input)
+                .map_err(|_| crate::Error::With("verification failed"))?;
+            state_in = state_out;
+        }
+        self.spendables.push(note_history.clone());
 
         Ok(())
     }

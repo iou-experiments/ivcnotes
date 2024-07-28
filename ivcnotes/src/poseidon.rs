@@ -12,7 +12,7 @@ use ark_crypto_primitives::{
     sponge::{poseidon::PoseidonConfig, Absorb},
 };
 use ark_ec::twisted_edwards::TECurveConfig;
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::AllocVar, fields::fp::FpVar, groups::curves::twisted_edwards::AffineVar,
 };
@@ -36,32 +36,6 @@ impl<F: PrimeField + Absorb> ToCRH<F> for Note<F> {
         let parent = self.parent_note.inner();
         let out_index = self.out_index.inner();
         vec![asset_hash, owner, value, step, parent, out_index]
-    }
-}
-
-pub(crate) fn field_cast<'a, F1: PrimeField, F2: PrimeField>(
-    x: &[F1],
-    dest: &'a mut Vec<F2>,
-) -> Option<&'a mut Vec<F2>> {
-    if F1::characteristic() != F2::characteristic() {
-        // "Trying to absorb non-native field elements."
-        None
-    } else {
-        x.iter().for_each(|item| {
-            let bytes = item.into_bigint().to_bytes_le();
-            dest.push(F2::from_le_bytes_mod_order(&bytes))
-        });
-        Some(dest)
-    }
-}
-
-impl<F: PrimeField + Absorb> Absorb for Note<F> {
-    fn to_sponge_bytes(&self, _: &mut Vec<u8>) {
-        unimplemented!();
-    }
-
-    fn to_sponge_field_elements<FF: PrimeField>(&self, dest: &mut Vec<FF>) {
-        field_cast(&self.to_crh(), dest).unwrap();
     }
 }
 

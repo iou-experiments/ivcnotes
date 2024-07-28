@@ -1,9 +1,12 @@
 use crate::{Address, AssetHash, FWrap};
 use ark_ff::PrimeField;
 use digest::Digest;
+use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+
 pub struct Asset<F: PrimeField> {
+    #[serde(with = "crate::ark_serde")]
     pub(crate) issuer: Address<F>,
     pub(crate) terms: Terms,
 }
@@ -25,7 +28,7 @@ impl<F: PrimeField> Asset<F> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Terms {
     IOU { maturity: u64, unit: u64 },
 }
