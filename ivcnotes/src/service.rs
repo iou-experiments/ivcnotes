@@ -1,95 +1,82 @@
 use crate::{
     circuit::IVC,
-    note::NoteHistory,
+    note::{EncryptedNoteHistory, NoteHistory},
     wallet::{Contact, Wallet},
     Address, Error,
 };
 
 pub struct Comm<E: IVC> {
-    pub(crate) name_server: Box<dyn NameServer<E>>,
-    pub(crate) message_server: Box<dyn MessageServer<E>>,
+    pub(crate) service: Box<dyn Service<E>>,
+}
+
+pub trait Service<E: IVC> {
+    fn register(&self, msg: &msg::request::Register<E>) -> Result<(), crate::Error>;
+    fn get_contact(
+        &self,
+        msg: &msg::request::GetContact<E::Field>,
+    ) -> Result<msg::response::Contact<E>, crate::Error>;
+    fn send_note(&self, msg: &msg::request::Note<E>) -> Result<(), crate::Error>;
+    fn get_notes(
+        &self,
+        msg: &msg::request::GetNotes<E::Field>,
+    ) -> Result<msg::response::Notes<E>, crate::Error>;
 }
 
 // response request messages between server and client
 pub mod msg {
     pub mod request {
-        use crate::{cipher::EncryptedNoteHistory, Address};
-        use ark_ec::twisted_edwards::TECurveConfig;
+        use crate::{circuit::IVC, note::EncryptedNoteHistory, Address};
         use ark_ff::PrimeField;
-        use arkeddsa::{signature::Signature, PublicKey};
         use serde_derive::{Deserialize, Serialize};
 
-        #[derive(Debug, Clone, Serialize, Deserialize)]
-        pub struct Register<TE: TECurveConfig + Clone> {
-            pub username: String,
-            #[serde(with = "crate::ark_serde")]
-            pub public_key: PublicKey<TE>,
-            #[serde(with = "crate::ark_serde")]
-            pub signature: Signature<TE>,
-        }
+        pub type Register<E> = crate::wallet::Contact<E>;
 
         #[derive(Debug, Clone, Serialize, Deserialize)]
-        pub enum Contact<F: PrimeField> {
+        pub enum GetContact<F: PrimeField> {
             Username(String),
             #[serde(with = "crate::ark_serde")]
             Address(Address<F>),
         }
 
-        pub struct Note<F: PrimeField> {
-            pub note_history: EncryptedNoteHistory,
-            pub receiver: Address<F>,
+        #[derive(Clone, Serialize, Deserialize)]
+        pub struct Note<E: IVC> {
+            pub note_history: EncryptedNoteHistory<E>,
+            #[serde(with = "crate::ark_serde")]
+            pub receiver: Address<E::Field>,
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize)]
-        pub struct Empty {}
+        pub struct GetNotes<F: PrimeField> {
+            #[serde(with = "crate::ark_serde")]
+            pub receiver: Address<F>,
+        }
     }
 
     pub mod response {
-
-        use crate::{cipher::EncryptedNoteHistory, Address};
-        use ark_ff::PrimeField;
+        use crate::{circuit::IVC, note::EncryptedNoteHistory};
         use serde_derive::{Deserialize, Serialize};
 
         pub type Contact<E> = crate::wallet::Contact<E>;
 
-        #[derive(Debug, Clone, Serialize, Deserialize)]
-        pub struct Notes<F: PrimeField> {
-            #[serde(with = "crate::ark_serde")]
-            pub sender: Address<F>,
-            pub notes: Vec<EncryptedNoteHistory>,
+        #[derive(Clone, Serialize, Deserialize)]
+        pub struct Notes<E: IVC> {
+            pub notes: Vec<EncryptedNoteHistory<E>>,
         }
     }
 }
 
-pub trait NameServer<E: IVC> {
-    fn register(&self, msg: &msg::request::Register<E::TE>) -> Result<(), crate::Error>;
-    fn get_contact(
-        &self,
-        msg: &msg::request::Contact<E::Field>,
-    ) -> Result<msg::response::Contact<E>, crate::Error>;
-}
-
 impl<E: IVC> Wallet<E> {
-    pub fn register(&self, username: &str) -> Result<(), crate::Error> {
-        let username_data = username.as_bytes();
-        let signature = self.auth.sign(&[username_data]);
-        let public_key = self.auth.public_key();
-
-        let msg = msg::request::Register {
-            username: username.to_string(),
-            public_key: public_key.clone(),
-            signature: signature.clone(),
-        };
-
-        self.comm.name_server.register(&msg)
+    pub fn register(&self) -> Result<(), crate::Error> {
+        let contact = self.contact();
+        self.comm.service.register(&contact)
     }
 
     pub fn find_contact_by_username(&mut self, username: &str) -> Result<Contact<E>, crate::Error> {
         match self.address_book.find_username(username) {
             Some(contact) => Ok(contact.clone()),
             None => {
-                let msg = msg::request::Contact::Username(username.to_string());
-                let contact = self.comm.name_server.get_contact(&msg)?;
+                let msg = msg::request::GetContact::Username(username.to_string());
+                let contact = self.comm.service.get_contact(&msg)?;
                 self.address_book.new_contact(&contact);
                 Ok(contact)
             }
@@ -103,21 +90,13 @@ impl<E: IVC> Wallet<E> {
         match self.address_book.find_address(address) {
             Some(contact) => Ok(contact.clone()),
             None => {
-                let msg = msg::request::Contact::Address(*address);
-                let contact = self.comm.name_server.get_contact(&msg)?;
+                let msg = msg::request::GetContact::Address(*address);
+                let contact = self.comm.service.get_contact(&msg)?;
                 self.address_book.new_contact(&contact);
                 Ok(contact)
             }
         }
     }
-}
-
-pub trait MessageServer<E: IVC> {
-    fn send_note(&self, msg: &msg::request::Note<E::Field>) -> Result<(), crate::Error>;
-    fn get_notes(
-        &self,
-        msg: &msg::request::Empty,
-    ) -> Result<msg::response::Notes<E::Field>, crate::Error>;
 }
 
 impl<E: IVC> Wallet<E> {
@@ -126,26 +105,31 @@ impl<E: IVC> Wallet<E> {
         receiver: &Contact<E>,
         note_history: &NoteHistory<E>,
     ) -> Result<(), crate::Error> {
-        let note_history = self.auth.encrypt(&receiver.public_key, note_history);
+        let encrypted = self.auth.encrypt(&receiver.public_key, note_history);
+        let note_history = EncryptedNoteHistory {
+            encrypted,
+            sender: self.contact(),
+        };
         let msg = msg::request::Note {
             note_history,
             receiver: receiver.address,
         };
-        self.comm.message_server.send_note(&msg)
+        self.comm.service.send_note(&msg)
     }
 
     pub fn get_notes(&mut self) -> Result<(), crate::Error> {
-        let notes = self
-            .comm
-            .message_server
-            .get_notes(&msg::request::Empty {})?;
-        let sender = &notes.sender;
-        let contact = self.find_contact_by_address(sender)?;
-
+        let msg = msg::request::GetNotes {
+            receiver: *self.address(),
+        };
+        let notes = self.comm.service.get_notes(&msg)?;
         let note_histories: Vec<NoteHistory<E>> = notes
             .notes
             .into_iter()
-            .map(|note_history| self.auth.decrypt(&contact.public_key, &note_history))
+            .map(|note_history| {
+                let sender = note_history.sender;
+                self.auth
+                    .decrypt(&sender.public_key, &note_history.encrypted)
+            })
             .collect::<Result<Vec<_>, Error>>()?;
 
         // TODO: continue iteration even some note_history fail
@@ -154,5 +138,87 @@ impl<E: IVC> Wallet<E> {
         }
 
         Ok(())
+    }
+}
+
+pub(crate) mod test {
+    use super::Service;
+    use crate::{circuit::IVC, note::EncryptedNoteHistory, wallet::Contact, Address};
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
+    pub struct MockService<E: IVC> {
+        contacts: HashMap<Address<E::Field>, Contact<E>>,
+        last_access: HashMap<Address<E::Field>, usize>,
+        queue: HashMap<Address<E::Field>, Vec<EncryptedNoteHistory<E>>>,
+    }
+
+    pub struct SharedMockService<E: IVC> {
+        pub shared: Rc<RefCell<MockService<E>>>,
+    }
+
+    impl<E: IVC> Service<E> for SharedMockService<E> {
+        fn register(&self, msg: &super::msg::request::Register<E>) -> Result<(), crate::Error> {
+            let address = msg.address;
+            let contact = Contact {
+                address,
+                username: msg.username.clone(),
+                public_key: msg.public_key.clone(),
+            };
+            let mut shared = self.shared.borrow_mut();
+            shared.contacts.insert(address, contact);
+            Ok(())
+        }
+
+        fn get_contact(
+            &self,
+            msg: &super::msg::request::GetContact<E::Field>,
+        ) -> Result<super::msg::response::Contact<E>, crate::Error> {
+            match msg {
+                super::msg::request::GetContact::Username(username) => {
+                    let shared = self.shared.borrow();
+                    let contact = shared
+                        .contacts
+                        .values()
+                        .find(|contact| contact.username == *username)
+                        .ok_or(crate::Error::With("contact not found"))?;
+                    Ok(contact.clone())
+                }
+                super::msg::request::GetContact::Address(address) => {
+                    let shared = self.shared.borrow();
+                    let contact = shared
+                        .contacts
+                        .get(address)
+                        .ok_or(crate::Error::With("contact not found"))?;
+                    Ok(contact.clone())
+                }
+            }
+        }
+
+        fn send_note(&self, msg: &super::msg::request::Note<E>) -> Result<(), crate::Error> {
+            let mut shared = self.shared.borrow_mut();
+            shared
+                .queue
+                .entry(msg.receiver)
+                .or_default()
+                .push(msg.note_history.clone());
+            Ok(())
+        }
+
+        fn get_notes(
+            &self,
+            msg: &super::msg::request::GetNotes<E::Field>,
+        ) -> Result<super::msg::response::Notes<E>, crate::Error> {
+            let shared = self.shared.borrow();
+            let last_access = shared.last_access.get(&msg.receiver).unwrap_or(&0);
+            let notes = shared
+                .queue
+                .get(&msg.receiver)
+                .unwrap_or(&vec![])
+                .iter()
+                .skip(*last_access)
+                .cloned()
+                .collect::<Vec<_>>();
+            Ok(super::msg::response::Notes { notes })
+        }
     }
 }

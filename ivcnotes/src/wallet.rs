@@ -13,11 +13,15 @@ use crate::{
 };
 use arkeddsa::PublicKey;
 use rand::{CryptoRng, RngCore};
+use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+
 pub struct Contact<E: IVC> {
+    #[serde(with = "crate::ark_serde")]
     pub(crate) address: Address<E::Field>,
     pub(crate) username: String,
+    #[serde(with = "crate::ark_serde")]
     pub(crate) public_key: PublicKey<E::TE>,
 }
 
@@ -81,6 +85,8 @@ pub struct Wallet<E: IVC> {
     pub(crate) address_book: AddressBook<E>,
     // communications
     pub(crate) comm: Comm<E>,
+    // username
+    pub(crate) username: String,
 }
 
 impl<E: IVC> Auth<E> {
@@ -117,6 +123,7 @@ impl<E: IVC> Wallet<E> {
         prover: Prover<E>,
         verifier: Verifier<E>,
         comm: Comm<E>,
+        username: String,
     ) -> Self {
         Self {
             spendables: vec![],
@@ -126,11 +133,23 @@ impl<E: IVC> Wallet<E> {
             verifier,
             comm,
             address_book: AddressBook::default(),
+            username,
         }
     }
 
     pub fn address(&self) -> &Address<E::Field> {
         self.auth.address()
+    }
+
+    pub fn contact(&self) -> Contact<E> {
+        let address = self.address();
+        let username = self.username.as_str();
+        let public_key = self.auth.public_key();
+        Contact {
+            address: *address,
+            username: username.to_string(),
+            public_key: public_key.clone(),
+        }
     }
 
     pub fn issue<R: RngCore + CryptoRng>(

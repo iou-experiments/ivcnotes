@@ -50,8 +50,6 @@ impl AsRef<[u8]> for EncryptedData {
     }
 }
 
-pub type EncryptedNoteHistory = EncryptedData;
-
 pub trait CipherText: serde::Serialize + for<'de> serde::Deserialize<'de> {
     fn encrypt(shared_key: &[u8; 32], obj: &Self) -> EncryptedData {
         let data = bincode::serialize(obj).unwrap();

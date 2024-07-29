@@ -97,8 +97,4 @@ impl<E: IVC> Auth<E> {
     pub(crate) fn sign_tx(&self, msg: &SigHash<E::Field>) -> Signature<E::TE> {
         self.signer.sign(&[msg.inner()])
     }
-
-    pub(crate) fn sign<A: Absorb>(&self, msg: &[A]) -> Signature<E::TE> {
-        self.signer.sign(msg)
-    }
 }

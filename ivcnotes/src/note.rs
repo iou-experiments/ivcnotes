@@ -1,6 +1,6 @@
 use crate::{
-    asset::Asset, circuit::IVC, poseidon::PoseidonConfigs, tx::IssueTx, Address, AssetHash, Blind,
-    BlindNoteHash, Nullifier, StateHash,
+    asset::Asset, cipher::EncryptedData, circuit::IVC, poseidon::PoseidonConfigs, tx::IssueTx,
+    wallet::Contact, Address, AssetHash, Blind, BlindNoteHash, Nullifier, StateHash,
 };
 use ark_crypto_primitives::{snark::SNARK, sponge::Absorb};
 use ark_ff::PrimeField;
@@ -192,4 +192,11 @@ impl<E: IVC> NoteHistory<E> {
             }
         }
     }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound = "E: IVC")]
+pub struct EncryptedNoteHistory<E: IVC> {
+    pub sender: Contact<E>,
+    pub encrypted: EncryptedData,
 }
