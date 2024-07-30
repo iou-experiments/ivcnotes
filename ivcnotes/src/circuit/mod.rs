@@ -104,6 +104,10 @@ pub struct Verifier<E: IVC> {
 }
 
 impl<E: IVC> Prover<E> {
+    pub fn new(pk: <<E as IVC>::Snark as SNARK<E::Field>>::ProvingKey) -> Self {
+        Self { pk }
+    }
+
     pub fn create_proof<R: RngCore + CryptoRng>(
         &self,
         h: &PoseidonConfigs<E::Field>,
@@ -118,6 +122,10 @@ impl<E: IVC> Prover<E> {
 }
 
 impl<E: IVC> Verifier<E> {
+    pub fn new(vk: <<E as IVC>::Snark as SNARK<E::Field>>::VerifyingKey) -> Self {
+        Self { vk }
+    }
+
     pub fn verify_proof(
         &self,
         proof: &<<E as IVC>::Snark as SNARK<E::Field>>::Proof,
@@ -126,5 +134,106 @@ impl<E: IVC> Verifier<E> {
         let pi = pi.to_verifier();
         E::Snark::verify(&self.vk, &pi, proof)
             .map_err(|_err| crate::Error::With("verification failed"))
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test {
+    use std::{fmt::Debug, marker::PhantomData};
+
+    use ark_bn254::Fr;
+    use ark_crypto_primitives::{snark::SNARK, sponge::Absorb};
+    use ark_ec::twisted_edwards::TECurveConfig;
+    use ark_ed_on_bn254::EdwardsConfig;
+    use ark_ff::PrimeField;
+    use ark_relations::r1cs::ConstraintSynthesizer;
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+    use rand::{CryptoRng, RngCore};
+
+    use crate::{wallet::Contact, Error};
+
+    use super::IVC;
+
+    #[derive(Clone, CanonicalDeserialize, CanonicalSerialize)]
+    pub(crate) struct MockArkElement {}
+
+    pub(crate) struct MockSNARK {}
+
+    impl<F: PrimeField> SNARK<F> for MockSNARK {
+        type ProvingKey = MockArkElement;
+        type VerifyingKey = MockArkElement;
+        type Proof = MockArkElement;
+        type ProcessedVerifyingKey = MockArkElement;
+        type Error = Error;
+
+        fn circuit_specific_setup<C: ConstraintSynthesizer<F>, R: RngCore + CryptoRng>(
+            _circuit: C,
+            _rng: &mut R,
+        ) -> Result<(Self::ProvingKey, Self::VerifyingKey), Self::Error> {
+            Ok((MockArkElement {}, MockArkElement {}))
+        }
+
+        fn prove<C: ConstraintSynthesizer<F>, R: RngCore + CryptoRng>(
+            _circuit_pk: &Self::ProvingKey,
+            _circuit: C,
+            _rng: &mut R,
+        ) -> Result<Self::Proof, Self::Error> {
+            Ok(MockArkElement {})
+        }
+
+        fn process_vk(
+            _circuit_vk: &Self::VerifyingKey,
+        ) -> Result<Self::ProcessedVerifyingKey, Self::Error> {
+            Ok(MockArkElement {})
+        }
+
+        fn verify_with_processed_vk(
+            _circuit_pvk: &Self::ProcessedVerifyingKey,
+            _public_input: &[F],
+            _proof: &Self::Proof,
+        ) -> Result<bool, Self::Error> {
+            Ok(true)
+        }
+    }
+
+    #[derive(Clone)]
+    struct MockIVC<TE: TECurveConfig>
+    where
+        TE::BaseField: PrimeField,
+    {
+        _marker: PhantomData<TE>,
+    }
+
+    impl<TE: TECurveConfig + Clone> IVC for MockIVC<TE>
+    where
+        TE::BaseField: PrimeField + Absorb,
+    {
+        type Snark = MockSNARK;
+        type Field = TE::BaseField;
+        type TE = TE;
+    }
+
+    #[derive(Clone)]
+    pub(crate) struct ConcreteIVC {}
+
+    impl Debug for ConcreteIVC {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("ConcreteIVC")
+        }
+    }
+
+    impl Debug for Contact<ConcreteIVC> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("Contact")
+                .field("address", &self.address)
+                .field("username", &self.username)
+                .finish()
+        }
+    }
+
+    impl IVC for ConcreteIVC {
+        type Snark = MockSNARK;
+        type Field = Fr;
+        type TE = EdwardsConfig;
     }
 }

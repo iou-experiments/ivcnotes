@@ -89,7 +89,6 @@ macro_rules! field_wrap {
     ($name:ident) => {
         #[derive(
             Clone,
-            Debug,
             Copy,
             Default,
             Eq,
@@ -101,6 +100,14 @@ macro_rules! field_wrap {
             CanonicalDeserialize,
         )]
         pub struct $name<F: ark_ff::PrimeField>(F);
+
+        impl<F: ark_ff::PrimeField> core::fmt::Debug for $name<F> {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                let bytes = self.to_bytes();
+                write!(f, "0x")?;
+                bytes.iter().rev().try_for_each(|&b| write!(f, "{:02x}", b))
+            }
+        }
 
         impl<F: ark_ff::PrimeField> From<F> for $name<F> {
             fn from(value: F) -> Self {

@@ -15,7 +15,7 @@ use arkeddsa::PublicKey;
 use rand::{CryptoRng, RngCore};
 use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 
 pub struct Contact<E: IVC> {
     #[serde(with = "crate::ark_serde")]
@@ -398,5 +398,92 @@ impl<E: IVC> Wallet<E> {
         self.spendables.push(note_history.clone());
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test {
+
+    use ark_bn254::Fr;
+    use ark_crypto_primitives::{
+        snark::SNARK,
+        sponge::poseidon::{find_poseidon_ark_and_mds, PoseidonConfig},
+    };
+    use ark_ff::PrimeField;
+    use rand_core::OsRng;
+
+    use crate::{
+        asset::{self, Asset},
+        circuit::{
+            test::{ConcreteIVC, MockSNARK},
+            Circuit, Prover, Verifier,
+        },
+        id::Auth,
+        poseidon::PoseidonConfigs,
+        service::{test::SharedMockService, Comm},
+    };
+
+    use super::Wallet;
+
+    pub(crate) fn poseidon_cfg() -> PoseidonConfigs<Fr> {
+        let rate = 2;
+        let full_rounds = 8;
+        let partial_rounds = 55;
+        let prime_bits = Fr::MODULUS_BIT_SIZE as u64;
+        let (constants, mds) =
+            find_poseidon_ark_and_mds::<Fr>(prime_bits, 2, full_rounds, partial_rounds, 0);
+        let poseidon_cfg = PoseidonConfig::<Fr>::new(
+            full_rounds as usize,
+            partial_rounds as usize,
+            5,
+            mds.clone(),
+            constants.clone(),
+            rate,
+            1,
+        );
+
+        PoseidonConfigs::<Fr> {
+            id: poseidon_cfg.clone(),
+            note: poseidon_cfg.clone(),
+            blind: poseidon_cfg.clone(),
+            state: poseidon_cfg.clone(),
+            nullifier: poseidon_cfg.clone(),
+            tx: poseidon_cfg.clone(),
+            eddsa: poseidon_cfg.clone(),
+        }
+    }
+
+    #[test]
+    fn test_wallet() {
+        type X = ConcreteIVC;
+
+        let service = SharedMockService::new();
+        let h = poseidon_cfg();
+        let circuit = Circuit::<X>::empty(&h);
+        let (pk, vk) = MockSNARK::circuit_specific_setup(circuit, &mut OsRng).unwrap();
+
+        let new_wallet = |username: &str| -> Wallet<X> {
+            let auth = Auth::<X>::generate(&h, &mut OsRng).unwrap();
+            let prover = Prover::<X>::new(pk.clone());
+            let verifier = Verifier::<X>::new(vk.clone());
+            let comm = Comm::<X> {
+                service: Box::new(service.clone()),
+            };
+            Wallet::<X>::new(auth, &h, prover, verifier, comm, username.to_string())
+        };
+
+        let mut w0 = new_wallet("user0");
+        let mut w1 = new_wallet("user1");
+
+        w0.register().unwrap();
+        w1.register().unwrap();
+
+        service.log_contacts();
+
+        let terms = &asset::Terms::iou(365, 1);
+        let asset = Asset::new(w0.address(), terms);
+        w0.issue(&mut OsRng, &asset, 1000, "user1").unwrap();
+        service.log_messages();
+        w1.get_notes().unwrap();
     }
 }
