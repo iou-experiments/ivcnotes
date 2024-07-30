@@ -146,7 +146,15 @@ pub(crate) mod test {
     use super::Service;
     use crate::{circuit::test::ConcreteIVC, note::EncryptedNoteHistory, wallet::Contact, Address};
     use ark_bn254::Fr;
+    use ark_ec::twisted_edwards::TECurveConfig;
+    use ark_ed_on_bn254::EdwardsConfig;
+    use ark_serialize::CanonicalSerialize;
+    use arkeddsa::PublicKey;
+    use serde_derive::{Deserialize, Serialize};
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
+    type TE = EdwardsConfig;
+    use arkeddsa::SigningKey;
+    use rand_core::OsRng;
 
     #[derive(Clone)]
     pub struct MockService {
@@ -199,17 +207,61 @@ pub(crate) mod test {
         }
     }
 
+    #[derive(Serialize, Deserialize)]
+    pub struct SmtgWithPubkey<TE: TECurveConfig> {
+        #[serde(with = "crate::ark_serde")]
+        pubkey: PublicKey<TE>,
+    }
+
+    fn ser_pubkey<TE: TECurveConfig>(pubkey: &PublicKey<TE>) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        pubkey.serialize_compressed(&mut bytes).unwrap();
+        bytes
+    }
+
+    fn ser_smtg_with_pubkey<TE: TECurveConfig>(smtg: SmtgWithPubkey<TE>) -> Vec<u8> {
+        bincode::serialize(&smtg).unwrap()
+    }
+
     impl Service<ConcreteIVC> for SharedMockService {
         fn register(
             &self,
             msg: &super::msg::request::Register<ConcreteIVC>,
         ) -> Result<(), crate::Error> {
+            let sk: SigningKey<TE> = SigningKey::generate::<sha2::Sha512>(&mut OsRng).unwrap();
+            let pubkey = sk.public_key().clone();
+
+            // serialization with crate::serde
+            let smtg = SmtgWithPubkey { pubkey };
+            let bytes1 = ser_smtg_with_pubkey(smtg);
+
             let address = msg.address;
             let contact = Contact {
                 address,
                 username: msg.username.clone(),
                 public_key: msg.public_key.clone(),
             };
+            let client = reqwest::blocking::Client::new();
+
+            let create_user_schema = crate::service_schema::CreateUserSchema {
+                username: msg.username.clone(),
+                pubkey: hex::encode(bytes1),
+                nonce: String::new(), // You might want to generate a nonce
+                messages: Vec::new(),
+                notes: Vec::new(),
+                has_double_spent: false,
+            };
+
+            let json_body = serde_json::to_string(&create_user_schema)
+                .expect("Failed to serialize CreateUserSchema");
+
+            let _ = client
+                .post("http://167.172.25.99:80/create_user")
+                .header("Accept", "*/*")
+                .header("Content-Type", "application/json")
+                .body(json_body)
+                .send();
+
             let mut shared = self.shared.borrow_mut();
             shared.contacts.insert(address, contact);
             Ok(())

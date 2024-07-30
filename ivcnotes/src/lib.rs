@@ -11,6 +11,7 @@ pub mod id;
 pub mod note;
 pub mod poseidon;
 pub mod service;
+pub mod service_schema;
 pub mod tx;
 pub mod wallet;
 

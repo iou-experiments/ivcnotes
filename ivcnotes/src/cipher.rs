@@ -1,7 +1,6 @@
 use crate::Error;
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use serde::{Deserialize, Serialize};
-use serde_derive::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;

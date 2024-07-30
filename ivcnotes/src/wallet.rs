@@ -11,6 +11,7 @@ use crate::{
     tx::{IssueTx, SealedIssueTx, SealedSplitTx, SplitTx},
     Address, Blind, BlindNoteHash, FWrap,
 };
+
 use arkeddsa::PublicKey;
 use rand::{CryptoRng, RngCore};
 use serde_derive::{Deserialize, Serialize};
@@ -469,6 +470,7 @@ pub(crate) mod test {
             let comm = Comm::<X> {
                 service: Box::new(service.clone()),
             };
+
             Wallet::<X>::new(auth, &h, prover, verifier, comm, username.to_string())
         };
 
