@@ -26,6 +26,17 @@ pub struct CreateUserSchema {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct UserRequest {
+    pub identifier: UserIdentifier,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum UserIdentifier {
+    Username(String),
+    Address(String),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct UsernameRequest {
     pub username: String,
 }
@@ -128,4 +139,44 @@ pub struct AuthData {
     pub username: String,
     pub signature_hex: String,
     pub challenge_id: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct UserSingleResponse {
+    pub status: &'static str,
+    pub user: User,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessageSingleResponse {
+    pub status: &'static str,
+    pub message: MessageSchema,
+}
+#[derive(Debug, Serialize)]
+pub struct NullifierResponseData {
+    pub status: &'static str,
+    pub nullifier: NoteNullifierSchema,
+}
+#[derive(Debug, Serialize)]
+pub enum NullifierResponse {
+    Ok(NoteNullifierSchema),
+    NotFound,
+    Error,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NoteResponse {
+    pub status: &'static str,
+    pub note: NoteSchema,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NoteHistoryResponse {
+    pub status: &'static str,
+    pub note_history: NoteHistory,
+}
+
+#[derive(Serialize)]
+pub struct IdentifierWrapper {
+    pub identifier: UserIdentifier,
 }

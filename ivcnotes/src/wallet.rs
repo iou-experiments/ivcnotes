@@ -479,7 +479,10 @@ pub(crate) mod test {
 
         w0.register().unwrap();
         w1.register().unwrap();
-
+        let res = w0.get_user_from_db(crate::service_schema::UserIdentifier::Username(
+            "user0".to_string(),
+        ));
+        println!("{:#?}", res);
         service.log_contacts();
 
         let terms = &asset::Terms::iou(365, 1);

@@ -1,6 +1,7 @@
 use crate::{
     circuit::IVC,
     note::{EncryptedNoteHistory, NoteHistory},
+    service_schema::{User, UserIdentifier},
     wallet::{Contact, Wallet},
     Address, Error,
 };
@@ -20,6 +21,7 @@ pub trait Service<E: IVC> {
         &self,
         msg: &msg::request::GetNotes<E::Field>,
     ) -> Result<msg::response::Notes<E>, crate::Error>;
+    fn get_user_from_db(&self, identifier: UserIdentifier) -> Result<User, String>;
 }
 
 // response request messages between server and client
@@ -69,6 +71,10 @@ impl<E: IVC> Wallet<E> {
     pub fn register(&self) -> Result<(), crate::Error> {
         let contact = self.contact();
         self.comm.service.register(&contact)
+    }
+
+    pub fn get_user_from_db(&mut self, identifier: UserIdentifier) -> Result<User, String> {
+        self.comm.service.get_user_from_db(identifier)
     }
 
     pub fn find_contact_by_username(&mut self, username: &str) -> Result<Contact<E>, crate::Error> {
@@ -147,13 +153,13 @@ pub(crate) mod test {
     use crate::{
         circuit::{test::ConcreteIVC, IVC},
         note::EncryptedNoteHistory,
+        service_schema::{IdentifierWrapper, User, UserIdentifier},
         wallet::Contact,
         Address,
     };
     use ark_bn254::Fr;
     use ark_ec::twisted_edwards::TECurveConfig;
     use ark_ed_on_bn254::EdwardsConfig;
-    use ark_serialize::CanonicalSerialize;
     use arkeddsa::PublicKey;
     use serde_derive::{Deserialize, Serialize};
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -224,20 +230,8 @@ pub(crate) mod test {
         address: Address<E::Field>,
     }
 
-    // fn ser_address<E: IVC>(address: &Address<E> + ark_ff::PrimeField) -> Vec<u8> {
-    //     let mut bytes = Vec::new();
-    //     address.serialize_compressed(&mut bytes).unwrap();
-    //     bytes
-    // }
-
     fn ser_smtg_with_address<E: IVC>(smtg: SmtgWithAddress<E>) -> Vec<u8> {
         bincode::serialize(&smtg).unwrap()
-    }
-
-    fn ser_pubkey<TE: TECurveConfig>(pubkey: &PublicKey<TE>) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        pubkey.serialize_compressed(&mut bytes).unwrap();
-        bytes
     }
 
     fn ser_smtg_with_pubkey<TE: TECurveConfig>(smtg: SmtgWithPubkey<TE>) -> Vec<u8> {
@@ -288,6 +282,29 @@ pub(crate) mod test {
             let mut shared = self.shared.borrow_mut();
             shared.contacts.insert(msg.address, contact);
             Ok(())
+        }
+
+        fn get_user_from_db(&self, identifier: UserIdentifier) -> Result<User, String> {
+            let client = reqwest::blocking::Client::new();
+            let wrapper = IdentifierWrapper { identifier };
+            let json_body = serde_json::to_string(&wrapper).expect("Failed to serialize to json");
+            let res = client
+                .get("http://167.172.25.99/get_user")
+                .header("Accept", "*/*")
+                .header("Content-Type", "application/json")
+                .body(json_body)
+                .send()
+                .map_err(|e| format!("Failed to send request: {}", e))?;
+
+            if res.status().is_success() {
+                let res_text = res
+                    .text()
+                    .map_err(|e| format!("Failed to read response body: {}", e));
+                let user: User = serde_json::from_str(&res_text.unwrap()).unwrap();
+                Ok(user)
+            } else {
+                Err(format!("Request failed with status: {}", res.status()))
+            }
         }
 
         fn get_contact(
