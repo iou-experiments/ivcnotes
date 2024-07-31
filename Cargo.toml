@@ -37,3 +37,4 @@ rand_core = {version = "0.6", default-features = false}
 # arkeddsa = {git = "https://github.com/kilic/arkeddsa"}
 aes = "0.8.3"
 arkeddsa = {path = "../../kilic/arkeddsa"}
+colored = "2"
