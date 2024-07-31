@@ -144,7 +144,12 @@ impl<E: IVC> Wallet<E> {
 #[cfg(test)]
 pub(crate) mod test {
     use super::Service;
-    use crate::{circuit::test::ConcreteIVC, note::EncryptedNoteHistory, wallet::Contact, Address};
+    use crate::{
+        circuit::{test::ConcreteIVC, IVC},
+        note::EncryptedNoteHistory,
+        wallet::Contact,
+        Address,
+    };
     use ark_bn254::Fr;
     use ark_ec::twisted_edwards::TECurveConfig;
     use ark_ed_on_bn254::EdwardsConfig;
@@ -213,6 +218,22 @@ pub(crate) mod test {
         pubkey: PublicKey<TE>,
     }
 
+    #[derive(Serialize, Deserialize)]
+    pub struct SmtgWithAddress<E: IVC> {
+        #[serde(with = "crate::ark_serde")]
+        address: Address<E::Field>,
+    }
+
+    // fn ser_address<E: IVC>(address: &Address<E> + ark_ff::PrimeField) -> Vec<u8> {
+    //     let mut bytes = Vec::new();
+    //     address.serialize_compressed(&mut bytes).unwrap();
+    //     bytes
+    // }
+
+    fn ser_smtg_with_address<E: IVC>(smtg: SmtgWithAddress<E>) -> Vec<u8> {
+        bincode::serialize(&smtg).unwrap()
+    }
+
     fn ser_pubkey<TE: TECurveConfig>(pubkey: &PublicKey<TE>) -> Vec<u8> {
         let mut bytes = Vec::new();
         pubkey.serialize_compressed(&mut bytes).unwrap();
@@ -230,14 +251,15 @@ pub(crate) mod test {
         ) -> Result<(), crate::Error> {
             let sk: SigningKey<TE> = SigningKey::generate::<sha2::Sha512>(&mut OsRng).unwrap();
             let pubkey = sk.public_key().clone();
-
             // serialization with crate::serde
-            let smtg = SmtgWithPubkey { pubkey };
-            let bytes1 = ser_smtg_with_pubkey(smtg);
-
-            let address = msg.address;
+            let smtg_pubkey = SmtgWithPubkey { pubkey };
+            let smtg_address = SmtgWithAddress::<ConcreteIVC> {
+                address: msg.address,
+            };
+            let pubkey_bytes = ser_smtg_with_pubkey(smtg_pubkey);
+            let address_bytes = ser_smtg_with_address(smtg_address);
             let contact = Contact {
-                address,
+                address: msg.address,
                 username: msg.username.clone(),
                 public_key: msg.public_key.clone(),
             };
@@ -245,7 +267,8 @@ pub(crate) mod test {
 
             let create_user_schema = crate::service_schema::CreateUserSchema {
                 username: msg.username.clone(),
-                pubkey: hex::encode(bytes1),
+                address: hex::encode(address_bytes),
+                pubkey: hex::encode(pubkey_bytes),
                 nonce: String::new(), // You might want to generate a nonce
                 messages: Vec::new(),
                 notes: Vec::new(),
@@ -263,7 +286,7 @@ pub(crate) mod test {
                 .send();
 
             let mut shared = self.shared.borrow_mut();
-            shared.contacts.insert(address, contact);
+            shared.contacts.insert(msg.address, contact);
             Ok(())
         }
 

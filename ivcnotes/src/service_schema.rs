@@ -11,6 +11,7 @@ pub struct User {
     pub pubkey: Option<String>,
     pub messages: Option<Vec<String>>,
     pub notes: Option<Vec<String>>,
+    pub address: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -18,10 +19,12 @@ pub struct CreateUserSchema {
     pub username: String,
     pub pubkey: String,
     pub nonce: String,
+    pub address: String,
     pub messages: Vec<String>,
     pub notes: Vec<String>,
     pub has_double_spent: bool,
 }
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UsernameRequest {
     pub username: String,
