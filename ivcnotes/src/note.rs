@@ -8,11 +8,9 @@ use serde_derive::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum NoteOutIndex {
-    // Original note hash the issue tag
-    #[default]
-    Issue,
     // Output with index 0 conventionally this is the refund note
     Out0,
+    #[default]
     // Output with index 1 conventionally this is the sent note
     Out1,
 }
@@ -27,9 +25,8 @@ impl NoteOutIndex {
 impl From<&NoteOutIndex> for u8 {
     fn from(val: &NoteOutIndex) -> Self {
         match val {
-            NoteOutIndex::Issue => 0,
-            NoteOutIndex::Out0 => 1,
-            NoteOutIndex::Out1 => 2,
+            NoteOutIndex::Out0 => 0,
+            NoteOutIndex::Out1 => 1,
         }
     }
 }
@@ -37,9 +34,8 @@ impl From<&NoteOutIndex> for u8 {
 impl From<u8> for NoteOutIndex {
     fn from(val: u8) -> Self {
         match val {
-            0 => NoteOutIndex::Issue,
-            1 => NoteOutIndex::Out0,
-            2 => NoteOutIndex::Out1,
+            0 => NoteOutIndex::Out0,
+            1 => NoteOutIndex::Out1,
             _ => panic!("invalid data"),
         }
     }
@@ -186,10 +182,6 @@ impl<E: IVC> NoteHistory<E> {
         match self.current_note.out_index {
             NoteOutIndex::Out0 => h.state(&blind_note_hash, &self.sibling),
             NoteOutIndex::Out1 => h.state(&self.sibling, &blind_note_hash),
-            NoteOutIndex::Issue => {
-                assert_eq!(self.sibling, BlindNoteHash::default());
-                h.state(&BlindNoteHash::default(), &blind_note_hash)
-            }
         }
     }
 }

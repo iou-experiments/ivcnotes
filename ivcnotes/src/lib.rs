@@ -10,6 +10,7 @@ pub mod circuit;
 pub mod id;
 pub mod note;
 pub mod poseidon;
+pub mod pretty;
 pub mod service;
 pub mod service_schema;
 pub mod tx;
@@ -58,6 +59,10 @@ pub trait FWrap<F: ark_ff::PrimeField>: From<F> + AsRef<F> + Clone + Copy {
         bytes
     }
 
+    fn to_string(&self) -> String {
+        self.inner().to_string()
+    }
+
     fn from_bytes(bytes: &[u8]) -> Result<Self, Box<dyn ark_std::error::Error>> {
         let deserialized = F::deserialize_compressed(bytes)?;
         Ok(deserialized.into())
@@ -80,6 +85,15 @@ pub trait FWrap<F: ark_ff::PrimeField>: From<F> + AsRef<F> + Clone + Copy {
     {
         let bytes = Vec::<u8>::deserialize(d)?;
         Ok(Self::from_bytes(&bytes).unwrap())
+    }
+
+    fn short_hex(&self) -> String {
+        let bytes = self.to_bytes();
+        let mut s = "0x".to_string();
+        for b in bytes.iter().rev().take(4) {
+            s.push_str(&format!("{:02x}", b));
+        }
+        s
     }
 }
 
@@ -104,9 +118,10 @@ macro_rules! field_wrap {
 
         impl<F: ark_ff::PrimeField> core::fmt::Debug for $name<F> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                let bytes = self.to_bytes();
-                write!(f, "0x")?;
-                bytes.iter().rev().try_for_each(|&b| write!(f, "{:02x}", b))
+                // let bytes = self.to_bytes();
+                // write!(f, "0x")?;
+                // bytes.iter().rev().try_for_each(|&b| write!(f, "{:02x}", b))
+                write!(f, "{}", self.0.to_string())
             }
         }
 

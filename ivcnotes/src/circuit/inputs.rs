@@ -8,6 +8,7 @@ use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::groups::curves::twisted_edwards::AffineVar;
+use ark_r1cs_std::R1CSVar;
 use ark_relations::r1cs::{Namespace, Result as CSResult, SynthesisError};
 use arkeddsa::signature::Signature;
 use arkeddsa::PublicKey;
@@ -76,8 +77,8 @@ impl<F: PrimeField> PublicInput<F> {
             self.sender.inner(),
             self.state_in.inner(),
             self.state_out.inner(),
-            F::from(self.step as u64),
             self.nullifier.inner(),
+            F::from(self.step as u64),
         ]
     }
 }
@@ -200,7 +201,7 @@ impl<E: IVC> AuxInputs<E> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct NoteVar<F: PrimeField> {
     pub(crate) asset_hash: FpVar<F>,
     pub(crate) owner: FpVar<F>,
@@ -208,6 +209,25 @@ pub struct NoteVar<F: PrimeField> {
     pub(crate) step: FpVar<F>,
     pub(crate) parent_note: FpVar<F>,
     pub(crate) out_index: FpVar<F>,
+}
+
+impl<F: PrimeField> Debug for NoteVar<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NoteVar")
+            .field(
+                "asset_hash",
+                &self.asset_hash.value().map(|e| e.to_string()),
+            )
+            .field("owner", &self.owner.value().map(|e| e.to_string()))
+            .field("value", &self.value.value().map(|e| e.to_string()))
+            .field("step", &self.step.value().map(|e| e.to_string()))
+            .field(
+                "parent_note",
+                &self.parent_note.value().map(|e| e.to_string()),
+            )
+            .field("out_index", &self.out_index.value().map(|e| e.to_string()))
+            .finish()
+    }
 }
 
 impl<F: PrimeField> ToCRH<F> for NoteVar<F> {

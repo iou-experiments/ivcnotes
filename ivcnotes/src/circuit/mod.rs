@@ -1,56 +1,15 @@
 use crate::poseidon::PoseidonConfigs;
 use ark_crypto_primitives::snark::SNARK;
-use ark_crypto_primitives::sponge::constraints::CryptographicSpongeVar;
-use ark_crypto_primitives::sponge::poseidon::constraints::PoseidonSpongeVar;
-use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::twisted_edwards::{Affine, TECurveConfig};
-use ark_ec::{AffineRepr, CurveConfig};
+use ark_ec::twisted_edwards::TECurveConfig;
 use ark_ff::PrimeField;
-use ark_r1cs_std::alloc::AllocVar;
-use ark_r1cs_std::eq::EqGadget;
-use ark_r1cs_std::fields::fp::FpVar;
-use ark_r1cs_std::fields::nonnative::NonNativeFieldVar;
-use ark_r1cs_std::groups::curves::twisted_edwards::AffineVar;
-use ark_r1cs_std::groups::CurveVar;
-use ark_r1cs_std::ToBitsGadget;
-use ark_relations::r1cs::{
-    ConstraintSynthesizer, ConstraintSystemRef, Namespace, Result as CSResult,
-};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Result as CSResult};
 use cs::synth;
 use inputs::{AuxInputs, PublicInput};
 use rand::{CryptoRng, RngCore};
 
 pub mod cs;
 pub mod inputs;
-
-fn verify_signature<F: PrimeField, TE: TECurveConfig<BaseField = F>>(
-    cs: impl Into<Namespace<F>>,
-    poseidon: &PoseidonConfig<F>,
-    pubkey: &AffineVar<TE, FpVar<F>>,
-    sig_r: &AffineVar<TE, FpVar<F>>,
-    sig_s: &NonNativeFieldVar<<TE as CurveConfig>::ScalarField, F>,
-    msg: &FpVar<F>,
-) -> CSResult<()> {
-    let cs = cs.into().cs();
-
-    let b = AffineVar::new_constant(cs.clone(), Affine::<_>::generator())?;
-    let mut poseidon = PoseidonSpongeVar::new(cs.clone(), poseidon);
-
-    // TODO: move to configs
-    poseidon.absorb(&sig_r)?;
-    poseidon.absorb(&pubkey)?;
-    poseidon.absorb(msg)?;
-
-    let (_, k_bits) =
-        poseidon.squeeze_nonnative_field_elements::<<TE as CurveConfig>::ScalarField>(1)?;
-
-    let kx_b0 = pubkey.scalar_mul_le(k_bits.first().unwrap().iter())?;
-    let sig_s_bits = sig_s.to_bits_le()?;
-    let s_b = b.scalar_mul_le(sig_s_bits.iter())?;
-
-    sig_r.enforce_equal(&(s_b - kx_b0))
-}
 
 pub trait IVC: Clone {
     // proof system config
@@ -137,13 +96,77 @@ impl<E: IVC> Verifier<E> {
     }
 }
 
+pub mod concrete {
+
+    use super::{Circuit, IVC};
+    use crate::poseidon::PoseidonConfigs;
+    use ark_bn254::{Bn254, Fr};
+    use ark_crypto_primitives::{
+        snark::CircuitSpecificSetupSNARK,
+        sponge::poseidon::{find_poseidon_ark_and_mds, PoseidonConfig},
+    };
+    use ark_ed_on_bn254::EdwardsConfig;
+    use ark_ff::PrimeField;
+    use ark_groth16::{Groth16, ProvingKey, VerifyingKey};
+    use rand_core::OsRng;
+
+    type JubJub = EdwardsConfig;
+
+    #[derive(Clone)]
+    pub struct Concrete;
+
+    impl IVC for Concrete {
+        type Snark = Groth16<Bn254>;
+        type Field = Fr;
+        type TE = JubJub;
+    }
+
+    pub fn poseidon_cfg() -> PoseidonConfigs<Fr> {
+        let rate = 2;
+        let full_rounds = 8;
+        let partial_rounds = 55;
+        let prime_bits = Fr::MODULUS_BIT_SIZE as u64;
+        let (constants, mds) =
+            find_poseidon_ark_and_mds::<Fr>(prime_bits, 2, full_rounds, partial_rounds, 0);
+        let poseidon_cfg = PoseidonConfig::<Fr>::new(
+            full_rounds as usize,
+            partial_rounds as usize,
+            5,
+            mds.clone(),
+            constants.clone(),
+            rate,
+            1,
+        );
+
+        PoseidonConfigs::<Fr> {
+            id: poseidon_cfg.clone(),
+            note: poseidon_cfg.clone(),
+            blind: poseidon_cfg.clone(),
+            state: poseidon_cfg.clone(),
+            nullifier: poseidon_cfg.clone(),
+            tx: poseidon_cfg.clone(),
+            eddsa: poseidon_cfg.clone(),
+        }
+    }
+
+    pub fn circuit_setup() -> (ProvingKey<Bn254>, VerifyingKey<Bn254>) {
+        let poseidon_cfg = poseidon_cfg();
+        let circuit: Circuit<Concrete> = Circuit::empty(&poseidon_cfg);
+        Groth16::<Bn254>::setup(circuit, &mut OsRng).unwrap()
+    }
+
+    #[test]
+    fn test_circuit_setup() {
+        circuit_setup();
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod test {
-    use std::{fmt::Debug, marker::PhantomData};
+    use std::fmt::Debug;
 
     use ark_bn254::Fr;
-    use ark_crypto_primitives::{snark::SNARK, sponge::Absorb};
-    use ark_ec::twisted_edwards::TECurveConfig;
+    use ark_crypto_primitives::snark::SNARK;
     use ark_ed_on_bn254::EdwardsConfig;
     use ark_ff::PrimeField;
     use ark_relations::r1cs::ConstraintSynthesizer;
@@ -196,32 +219,6 @@ pub(crate) mod test {
         }
     }
 
-    #[derive(Clone)]
-    struct MockIVC<TE: TECurveConfig>
-    where
-        TE::BaseField: PrimeField,
-    {
-        _marker: PhantomData<TE>,
-    }
-
-    impl<TE: TECurveConfig + Clone> IVC for MockIVC<TE>
-    where
-        TE::BaseField: PrimeField + Absorb,
-    {
-        type Snark = MockSNARK;
-        type Field = TE::BaseField;
-        type TE = TE;
-    }
-
-    #[derive(Clone)]
-    pub(crate) struct ConcreteIVC {}
-
-    impl Debug for ConcreteIVC {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str("ConcreteIVC")
-        }
-    }
-
     impl Debug for Contact<ConcreteIVC> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.debug_struct("Contact")
@@ -230,6 +227,9 @@ pub(crate) mod test {
                 .finish()
         }
     }
+
+    #[derive(Clone)]
+    pub(crate) struct ConcreteIVC {}
 
     impl IVC for ConcreteIVC {
         type Snark = MockSNARK;
