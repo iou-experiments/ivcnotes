@@ -229,6 +229,7 @@ impl<E: IVC> Wallet<E> {
             sibling: BlindNoteHash::default(),
         };
 
+        //let stored_note = self.comm
         // send the new history to the receiver
         self.send_note(&receiver, &note_history)?;
 

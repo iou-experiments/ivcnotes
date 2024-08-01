@@ -1,7 +1,7 @@
 use crate::{
     circuit::IVC,
     note::{EncryptedNoteHistory, NoteHistory},
-    service_schema::UserIdentifier,
+    service_schema::{NoteHistoryRequest, SaveNoteHistoryRequestSchema, UserIdentifier},
     wallet::{Contact, Wallet},
     Address, Error,
 };
@@ -45,6 +45,7 @@ pub mod msg {
             pub note_history: EncryptedNoteHistory<E>,
             #[serde(with = "crate::ark_serde")]
             pub receiver: Address<E::Field>,
+            pub username: String,
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +119,7 @@ impl<E: IVC> Wallet<E> {
         };
         let msg = msg::request::Note {
             note_history,
+            username: receiver.username.clone(),
             receiver: receiver.address,
         };
         self.comm.service.send_note(&msg)
@@ -153,7 +155,7 @@ pub(crate) mod test {
     use crate::{
         circuit::test::ConcreteIVC,
         note::EncryptedNoteHistory,
-        service_schema::{IdentifierWrapper, User, UserIdentifier},
+        service_schema::{IdentifierWrapper, SaveNoteHistoryRequestSchema, User, UserIdentifier},
         wallet::Contact,
         Address,
     };
@@ -373,12 +375,35 @@ pub(crate) mod test {
             &self,
             msg: &super::msg::request::Note<ConcreteIVC>,
         ) -> Result<(), crate::Error> {
-            let mut shared = self.shared.borrow_mut();
-            shared
-                .queue
-                .entry(msg.receiver)
-                .or_default()
-                .push(msg.note_history.clone());
+            let client = reqwest::blocking::Client::new();
+            let smtg_address = SmtgWithAddress {
+                address: msg.receiver,
+            };
+            let address_json = serde_json::to_string(&smtg_address).unwrap();
+
+            let send_and_transfer_json = crate::service_schema::NoteHistoryRequest {
+                owner_username: None,
+                recipient_username: msg.username.clone(),
+                note_history: SaveNoteHistoryRequestSchema {
+                    data: msg.note_history.encrypted.data.clone(),
+                    address: address_json,
+                },
+                message: "Transfer".to_string(),
+            };
+
+            let json_body = serde_json::to_string(&send_and_transfer_json)
+                .expect("Failed to serialize Notehistory");
+
+            let res = client
+                .post("http://167.172.25.99/create_and_transfer_note_history")
+                .header("Accept", "*/*")
+                .header("Content-Type", "application/json")
+                .body(json_body)
+                .send()
+                .map_err(|e| format!("Failed to send request: {}", e));
+
+            println!("{:#?}", res);
+
             Ok(())
         }
 
