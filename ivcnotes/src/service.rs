@@ -3,7 +3,7 @@ use crate::{
     note::{EncryptedNoteHistory, NoteHistory},
     service_schema::UserIdentifier,
     wallet::{Contact, Wallet},
-    Address, Error,
+    Error,
 };
 
 pub struct Comm<E: IVC> {
@@ -82,21 +82,6 @@ impl<E: IVC> Wallet<E> {
             Some(contact) => Ok(contact.clone()),
             None => {
                 let msg = msg::request::GetContact::Username(username.to_string());
-                let contact = self.comm.service.get_contact(&msg)?;
-                self.address_book.new_contact(&contact);
-                Ok(contact)
-            }
-        }
-    }
-
-    pub fn find_contact_by_address(
-        &mut self,
-        address: &Address<E::Field>,
-    ) -> Result<Contact<E>, crate::Error> {
-        match self.address_book.find_address(address) {
-            Some(contact) => Ok(contact.clone()),
-            None => {
-                let msg = msg::request::GetContact::Address(*address);
                 let contact = self.comm.service.get_contact(&msg)?;
                 self.address_book.new_contact(&contact);
                 Ok(contact)
@@ -246,11 +231,6 @@ pub(crate) mod test {
             let pubkey_json = serde_json::to_string(&smtg_pubkey).unwrap();
             let address_json = serde_json::to_string(&smtg_address).unwrap();
 
-            let contact = Contact {
-                address: msg.address,
-                username: msg.username.clone(),
-                public_key: msg.public_key.clone(),
-            };
             let client = reqwest::blocking::Client::new();
 
             let create_user_schema = crate::service_schema::CreateUserSchema {
@@ -272,9 +252,6 @@ pub(crate) mod test {
                 .header("Content-Type", "application/json")
                 .body(json_body)
                 .send();
-
-            let mut shared = self.shared.borrow_mut();
-            shared.contacts.insert(msg.address, contact);
             Ok(())
         }
 
@@ -333,24 +310,47 @@ pub(crate) mod test {
             &self,
             msg: &super::msg::request::GetContact<Fr>,
         ) -> Result<super::msg::response::Contact<ConcreteIVC>, crate::Error> {
-            match msg {
+            let mut shared = self.shared.borrow_mut(); // Note: changed to mutable borrow
+
+            let contact = match msg {
                 super::msg::request::GetContact::Username(username) => {
-                    let shared = self.shared.borrow();
-                    let contact = shared
+                    println!("{:#?}, {:#?}", msg, username);
+                    shared
                         .contacts
                         .values()
                         .find(|contact| contact.username == *username)
-                        .ok_or(crate::Error::With("contact not found"))?;
-                    Ok(contact.clone())
+                        .cloned()
+                        .or_else(|| {
+                            // Fetch from DB if not in shared
+                            self.get_user_from_db(crate::service_schema::UserIdentifier::Username(
+                                username.clone(),
+                            ))
+                            .ok()
+                        })
                 }
                 super::msg::request::GetContact::Address(address) => {
-                    let shared = self.shared.borrow();
-                    let contact = shared
-                        .contacts
-                        .get(address)
-                        .ok_or(crate::Error::With("contact not found"))?;
-                    Ok(contact.clone())
+                    println!("{:#?}, {:#?}", msg, address);
+                    shared.contacts.get(address).cloned().or_else(|| {
+                        let smtg_address = SmtgWithAddress { address: *address };
+                        let address_json = serde_json::to_string(&smtg_address).unwrap();
+                        self.get_user_from_db(crate::service_schema::UserIdentifier::Address(
+                            address_json,
+                        ))
+                        .ok()
+                    })
                 }
+            };
+
+            match contact {
+                Some(contact) => {
+                    // Add the contact to shared if it wasn't there before
+                    shared
+                        .contacts
+                        .entry(contact.address)
+                        .or_insert_with(|| contact.clone());
+                    Ok(contact)
+                }
+                None => Err(crate::Error::With("contact not found")),
             }
         }
 

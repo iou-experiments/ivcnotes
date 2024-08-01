@@ -479,16 +479,15 @@ pub(crate) mod test {
 
         w0.register().unwrap();
         w1.register().unwrap();
-        let res = w0.get_user_from_db(crate::service_schema::UserIdentifier::Username(
-            "user0".to_string(),
-        ));
-        println!("{:#?}", res);
+        let res1 = w0.find_contact_by_username("user0");
+        let res2 = w1.find_contact_by_username("user1");
+        println!("{:#?}, {:#?}", res1, res2);
         service.log_contacts();
 
         let terms = &asset::Terms::iou(365, 1);
         let asset = Asset::new(w0.address(), terms);
         w0.issue(&mut OsRng, &asset, 1000, "user1").unwrap();
-        service.log_messages();
-        w1.get_notes().unwrap();
+        // service.log_messages();
+        // w1.get_notes().unwrap();
     }
 }
