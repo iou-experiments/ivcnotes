@@ -118,14 +118,6 @@ impl<E: IVC> Auth<E> {
 }
 
 impl<E: IVC> Wallet<E> {
-    pub fn log_notes(&mut self) {
-        for note in self.pretty_notes().unwrap() {
-            println!("{}", note);
-        }
-    }
-}
-
-impl<E: IVC> Wallet<E> {
     pub fn new(
         auth: Auth<E>,
         poseidon: &PoseidonConfigs<E::Field>,
@@ -203,7 +195,8 @@ impl<E: IVC> Wallet<E> {
             &Default::default(),
         );
 
-        // construct aux inputs
+        // contruct aux inputs
+
         let public_key = self.auth.public_key();
         let signature = sealed.signature();
         let nullifier_key = self.auth.nullifier_key();
@@ -260,8 +253,6 @@ impl<E: IVC> Wallet<E> {
             .ok_or(crate::Error::With("bad spendable index"))?;
 
         let note_in = note_history.current_note;
-        let (_, blind_note_in) = self.h.note(&note_in);
-
         let step = note_history.steps.len() as u32;
         let asset_hash = &note_history.asset.hash();
 
@@ -280,7 +271,7 @@ impl<E: IVC> Wallet<E> {
             value_out_0,
             step,
             &NoteOutIndex::Out0,
-            &blind_note_in,
+            &note_in.parent_note,
             Blind::rand(rng),
         );
 
@@ -291,7 +282,7 @@ impl<E: IVC> Wallet<E> {
             value_out_1,
             step,
             &NoteOutIndex::Out1,
-            &blind_note_in,
+            &note_in.parent_note,
             Blind::rand(rng),
         );
 
@@ -311,8 +302,8 @@ impl<E: IVC> Wallet<E> {
             &sender,
             state_in,
             state_out,
-            step,
-            &sealed.nullifier,
+            0,
+            &Default::default(),
         );
 
         let public_key = self.auth.public_key();
@@ -343,11 +334,14 @@ impl<E: IVC> Wallet<E> {
             .prover
             .create_proof(&self.h, public_inputs, aux_inputs, rng)?;
 
+        // update note history
+
         // add the new step
         let step = IVCStep::new(&proof, state_out, sealed.nullifier(), &sender);
 
-        // and update note history
         note_history.steps.push(step);
+
+        // update the leading notes
 
         // 0. history to keep
         let note_history_0 = note_history;
@@ -392,23 +386,14 @@ impl<E: IVC> Wallet<E> {
                 i as u32,
                 &step.nullifier,
             );
-
             if i == note_history.steps.len() - 1 {
                 (note_history.state(&self.h) == *state_out)
                     .then_some(())
                     .ok_or(crate::Error::With("bad current state"))?;
             }
-            use ark_serialize::CanonicalSerialize;
-            let mut bytes = Vec::new();
-            step.proof.serialize_compressed(&mut bytes).unwrap();
-            let verified = self
-                .verifier
+            self.verifier
                 .verify_proof(&step.proof, &public_input)
-                .map_err(|_| crate::Error::With("verification process failed"))?;
-            if !verified {
-                println!("not verified {}", i);
-                return Err(crate::Error::With("not verified"));
-            }
+                .map_err(|_| crate::Error::With("verification failed"))?;
             state_in = state_out;
         }
         self.spendables.push(note_history.clone());
@@ -420,26 +405,63 @@ impl<E: IVC> Wallet<E> {
 #[cfg(test)]
 pub(crate) mod test {
 
+    use ark_bn254::Fr;
+    use ark_crypto_primitives::{
+        snark::SNARK,
+        sponge::poseidon::{find_poseidon_ark_and_mds, PoseidonConfig},
+    };
+    use ark_ff::PrimeField;
     use rand_core::OsRng;
 
     use crate::{
         asset::{self, Asset},
         circuit::{
-            concrete::{circuit_setup, poseidon_cfg, Concrete},
-            Prover, Verifier,
+            test::{ConcreteIVC, MockSNARK},
+            Circuit, Prover, Verifier,
         },
         id::Auth,
+        poseidon::PoseidonConfigs,
         service::{test::SharedMockService, Comm},
     };
 
     use super::Wallet;
 
+    pub(crate) fn poseidon_cfg() -> PoseidonConfigs<Fr> {
+        let rate = 2;
+        let full_rounds = 8;
+        let partial_rounds = 55;
+        let prime_bits = Fr::MODULUS_BIT_SIZE as u64;
+        let (constants, mds) =
+            find_poseidon_ark_and_mds::<Fr>(prime_bits, 2, full_rounds, partial_rounds, 0);
+        let poseidon_cfg = PoseidonConfig::<Fr>::new(
+            full_rounds as usize,
+            partial_rounds as usize,
+            5,
+            mds.clone(),
+            constants.clone(),
+            rate,
+            1,
+        );
+
+        PoseidonConfigs::<Fr> {
+            id: poseidon_cfg.clone(),
+            note: poseidon_cfg.clone(),
+            blind: poseidon_cfg.clone(),
+            state: poseidon_cfg.clone(),
+            nullifier: poseidon_cfg.clone(),
+            tx: poseidon_cfg.clone(),
+            eddsa: poseidon_cfg.clone(),
+        }
+    }
+
     #[test]
-    fn test_wallet_concrete() {
-        type X = Concrete;
+    fn test_wallet() {
+        type X = ConcreteIVC;
+
         let service = SharedMockService::new();
-        let (pk, vk) = circuit_setup();
         let h = poseidon_cfg();
+        let circuit = Circuit::<X>::empty(&h);
+        let (pk, vk) = MockSNARK::circuit_specific_setup(circuit, &mut OsRng).unwrap();
 
         let new_wallet = |username: &str| -> Wallet<X> {
             let auth = Auth::<X>::generate(&h, &mut OsRng).unwrap();
@@ -463,10 +485,10 @@ pub(crate) mod test {
         w2.register().unwrap();
         w3.register().unwrap();
         w4.register().unwrap();
-  
+
         let res1 = w0.find_contact_by_username("user0");
         let res2 = w1.find_contact_by_username("user1");
-            println!("{:#?}, {:#?}", res1, res2);
+
         service.log_contacts();
         let terms = &asset::Terms::iou(365, 1);
         let asset = Asset::new(w0.address(), terms);
@@ -485,8 +507,5 @@ pub(crate) mod test {
 
         w3.split(&mut OsRng, 0, 2, "user4").unwrap();
         w4.get_notes().unwrap();
-
-        w3.log_notes();
-        w4.log_notes();
     }
 }

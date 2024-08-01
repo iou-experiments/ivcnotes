@@ -3,7 +3,7 @@ use crate::{
     note::{EncryptedNoteHistory, NoteHistory},
     service_schema::UserIdentifier,
     wallet::{Contact, Wallet},
-    Error,
+    Address, Error,
 };
 
 pub struct Comm<E: IVC> {
@@ -91,7 +91,7 @@ impl<E: IVC> Wallet<E> {
 
     pub fn find_contact_by_address(
         &mut self,
-        address: &Address<E::Field>,
+        address: &Address<<E as crate::circuit::IVC>::Field>,
     ) -> Result<Contact<E>, crate::Error> {
         match self.address_book.find_address(address) {
             Some(contact) => Ok(contact.clone()),
@@ -103,7 +103,9 @@ impl<E: IVC> Wallet<E> {
             }
         }
     }
+}
 
+impl<E: IVC> Wallet<E> {
     pub(crate) fn send_note(
         &mut self,
         receiver: &Contact<E>,
@@ -167,19 +169,19 @@ pub(crate) mod test {
     use rand_core::OsRng;
 
     #[derive(Clone)]
-    pub struct MockService<E: IVC> {
-        contacts: HashMap<Address<E::Field>, Contact<E>>,
-        last_access: HashMap<Address<E::Field>, usize>,
-        queue: HashMap<Address<E::Field>, Vec<EncryptedNoteHistory<E>>>,
+    pub struct MockService {
+        contacts: HashMap<Address<Fr>, Contact<ConcreteIVC>>,
+        last_access: HashMap<Address<Fr>, usize>,
+        queue: HashMap<Address<Fr>, Vec<EncryptedNoteHistory<ConcreteIVC>>>,
     }
 
     #[derive(Clone)]
-    pub struct SharedMockService<E: IVC> {
-        pub shared: Rc<RefCell<MockService<E>>>,
+    pub struct SharedMockService {
+        pub shared: Rc<RefCell<MockService>>,
     }
 
-    impl<E: IVC> SharedMockService<E> {
-        pub(crate) fn new() -> SharedMockService<E> {
+    impl SharedMockService {
+        pub(crate) fn new() -> SharedMockService {
             SharedMockService {
                 shared: Rc::new(RefCell::new(MockService {
                     contacts: HashMap::new(),
@@ -195,26 +197,26 @@ pub(crate) mod test {
             }
         }
 
-        // pub(crate) fn log_contacts(&self) {
-        //     let shared = self.shared.borrow();
-        //     for contact in shared.contacts.values() {
-        //         println!("{:?}", contact);
-        //     }
-        // }
+        pub(crate) fn log_contacts(&self) {
+            let shared = self.shared.borrow();
+            for contact in shared.contacts.values() {
+                println!("{:?}", contact);
+            }
+        }
 
-        // pub(crate) fn log_messages(&self) {
-        //     let shared = self.shared.borrow();
-        //     for (address, messages) in shared.queue.iter() {
-        //         println!("msg for {:?}", address);
-        //         for message in messages {
-        //             println!(
-        //                 "sender {:?}, len: {}",
-        //                 message.sender.username,
-        //                 message.encrypted.data.len()
-        //             );
-        //         }
-        //     }
-        // }
+        pub(crate) fn log_messages(&self) {
+            let shared = self.shared.borrow();
+            for (address, messages) in shared.queue.iter() {
+                println!("msg for {:?}", address);
+                for message in messages {
+                    println!(
+                        "sender {:?}, len: {}",
+                        message.sender.username,
+                        message.encrypted.data.len()
+                    );
+                }
+            }
+        }
     }
 
     #[derive(Serialize, Deserialize, Debug)]
@@ -321,9 +323,11 @@ pub(crate) mod test {
 
         fn get_contact(
             &self,
-            msg: &super::msg::request::GetContact<E::Field>,
-        ) -> Result<super::msg::response::Contact<E>, crate::Error> {
-            match msg {
+            msg: &super::msg::request::GetContact<Fr>,
+        ) -> Result<super::msg::response::Contact<ConcreteIVC>, crate::Error> {
+            let mut shared = self.shared.borrow_mut(); // Note: changed to mutable borrow
+
+            let contact = match msg {
                 super::msg::request::GetContact::Username(username) => {
                     println!("{:#?}, {:#?}", msg, username);
                     shared
@@ -365,7 +369,10 @@ pub(crate) mod test {
             }
         }
 
-        fn send_note(&self, msg: &super::msg::request::Note<E>) -> Result<(), crate::Error> {
+        fn send_note(
+            &self,
+            msg: &super::msg::request::Note<ConcreteIVC>,
+        ) -> Result<(), crate::Error> {
             let mut shared = self.shared.borrow_mut();
             shared
                 .queue
@@ -377,8 +384,8 @@ pub(crate) mod test {
 
         fn get_notes(
             &self,
-            msg: &super::msg::request::GetNotes<E::Field>,
-        ) -> Result<super::msg::response::Notes<E>, crate::Error> {
+            msg: &super::msg::request::GetNotes<Fr>,
+        ) -> Result<super::msg::response::Notes<ConcreteIVC>, crate::Error> {
             let shared = self.shared.borrow();
             let last_access = shared.last_access.get(&msg.receiver).unwrap_or(&0);
             let notes = shared
