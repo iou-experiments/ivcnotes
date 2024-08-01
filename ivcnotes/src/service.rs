@@ -1,7 +1,7 @@
 use crate::{
     circuit::IVC,
     note::{EncryptedNoteHistory, NoteHistory},
-    service_schema::{User, UserIdentifier},
+    service_schema::UserIdentifier,
     wallet::{Contact, Wallet},
     Address, Error,
 };
@@ -21,7 +21,7 @@ pub trait Service<E: IVC> {
         &self,
         msg: &msg::request::GetNotes<E::Field>,
     ) -> Result<msg::response::Notes<E>, crate::Error>;
-    fn get_user_from_db(&self, identifier: UserIdentifier) -> Result<User, String>;
+    fn get_user_from_db(&self, identifier: UserIdentifier) -> Result<Contact<E>, String>;
 }
 
 // response request messages between server and client
@@ -73,7 +73,7 @@ impl<E: IVC> Wallet<E> {
         self.comm.service.register(&contact)
     }
 
-    pub fn get_user_from_db(&mut self, identifier: UserIdentifier) -> Result<User, String> {
+    pub fn get_user_from_db(&mut self, identifier: UserIdentifier) -> Result<Contact<E>, String> {
         self.comm.service.get_user_from_db(identifier)
     }
 
@@ -151,7 +151,7 @@ impl<E: IVC> Wallet<E> {
 pub(crate) mod test {
     use super::Service;
     use crate::{
-        circuit::{test::ConcreteIVC, IVC},
+        circuit::test::ConcreteIVC,
         note::EncryptedNoteHistory,
         service_schema::{IdentifierWrapper, User, UserIdentifier},
         wallet::Contact,
@@ -164,6 +164,7 @@ pub(crate) mod test {
     use serde_derive::{Deserialize, Serialize};
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
     type TE = EdwardsConfig;
+    use ark_ff::PrimeField;
     use arkeddsa::SigningKey;
     use rand_core::OsRng;
 
@@ -218,24 +219,16 @@ pub(crate) mod test {
         }
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug)]
     pub struct SmtgWithPubkey<TE: TECurveConfig> {
         #[serde(with = "crate::ark_serde")]
         pubkey: PublicKey<TE>,
     }
 
-    #[derive(Serialize, Deserialize)]
-    pub struct SmtgWithAddress<E: IVC> {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    pub struct SmtgWithAddress<F: PrimeField> {
         #[serde(with = "crate::ark_serde")]
-        address: Address<E::Field>,
-    }
-
-    fn ser_smtg_with_address<E: IVC>(smtg: SmtgWithAddress<E>) -> Vec<u8> {
-        bincode::serialize(&smtg).unwrap()
-    }
-
-    fn ser_smtg_with_pubkey<TE: TECurveConfig>(smtg: SmtgWithPubkey<TE>) -> Vec<u8> {
-        bincode::serialize(&smtg).unwrap()
+        address: Address<F>,
     }
 
     impl Service<ConcreteIVC> for SharedMockService {
@@ -247,11 +240,12 @@ pub(crate) mod test {
             let pubkey = sk.public_key().clone();
             // serialization with crate::serde
             let smtg_pubkey = SmtgWithPubkey { pubkey };
-            let smtg_address = SmtgWithAddress::<ConcreteIVC> {
+            let smtg_address = SmtgWithAddress {
                 address: msg.address,
             };
-            let pubkey_bytes = ser_smtg_with_pubkey(smtg_pubkey);
-            let address_bytes = ser_smtg_with_address(smtg_address);
+            let pubkey_json = serde_json::to_string(&smtg_pubkey).unwrap();
+            let address_json = serde_json::to_string(&smtg_address).unwrap();
+
             let contact = Contact {
                 address: msg.address,
                 username: msg.username.clone(),
@@ -261,8 +255,8 @@ pub(crate) mod test {
 
             let create_user_schema = crate::service_schema::CreateUserSchema {
                 username: msg.username.clone(),
-                address: hex::encode(address_bytes),
-                pubkey: hex::encode(pubkey_bytes),
+                address: address_json,
+                pubkey: pubkey_json,
                 nonce: String::new(), // You might want to generate a nonce
                 messages: Vec::new(),
                 notes: Vec::new(),
@@ -284,7 +278,10 @@ pub(crate) mod test {
             Ok(())
         }
 
-        fn get_user_from_db(&self, identifier: UserIdentifier) -> Result<User, String> {
+        fn get_user_from_db(
+            &self,
+            identifier: UserIdentifier,
+        ) -> Result<Contact<crate::circuit::test::ConcreteIVC>, String> {
             let client = reqwest::blocking::Client::new();
             let wrapper = IdentifierWrapper { identifier };
             let json_body = serde_json::to_string(&wrapper).expect("Failed to serialize to json");
@@ -300,8 +297,33 @@ pub(crate) mod test {
                 let res_text = res
                     .text()
                     .map_err(|e| format!("Failed to read response body: {}", e));
+
                 let user: User = serde_json::from_str(&res_text.unwrap()).unwrap();
-                Ok(user)
+                let address: Address<ark_bn254::Fr> = match user.address {
+                    Some(ref address_str) => {
+                        let smtg: SmtgWithAddress<ark_bn254::Fr> =
+                            serde_json::from_str(address_str).expect("no address");
+                        smtg.address
+                    }
+                    None => return Err("User address is None".into()),
+                };
+
+                let pubkey: PublicKey<TE> = match user.pubkey {
+                    Some(ref pubkey_str) => {
+                        let smtg: SmtgWithPubkey<TE> =
+                            serde_json::from_str(pubkey_str).expect("no pubkey");
+                        smtg.pubkey
+                    }
+                    None => return Err("User pubkey is None".into()),
+                };
+
+                let contact = Contact {
+                    public_key: pubkey,
+                    address,
+                    username: user.username.ok_or("Username is None")?,
+                };
+
+                Ok(contact)
             } else {
                 Err(format!("Request failed with status: {}", res.status()))
             }
