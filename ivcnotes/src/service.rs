@@ -1,7 +1,7 @@
 use crate::{
     circuit::IVC,
     note::{EncryptedNoteHistory, NoteHistory},
-    service_schema::UserIdentifier,
+    service_schema::{NoteHistorySaved, UserIdentifier},
     wallet::{Contact, Wallet},
     Address, Error,
 };
@@ -22,6 +22,11 @@ pub trait Service<E: IVC> {
         msg: &msg::request::GetNotes<E::Field>,
     ) -> Result<msg::response::Notes<E>, String>;
     fn get_user_from_db(&self, identifier: UserIdentifier) -> Result<Contact<E>, String>;
+    fn convert_note_history_to_encrypted_note_history(
+        &self,
+        nh: NoteHistorySaved,
+        username: String,
+    ) -> EncryptedNoteHistory<E>;
 }
 
 // response request messages between server and client
@@ -136,6 +141,7 @@ impl<E: IVC> Wallet<E> {
             .service
             .get_notes(&msg)
             .expect("failed to get notes from db");
+
         let note_histories: Vec<NoteHistory<E>> = notes
             .notes
             .into_iter()
@@ -310,6 +316,7 @@ pub(crate) mod test {
 
                 let pubkey: PublicKey<TE> = match user.pubkey {
                     Some(ref pubkey_str) => {
+                        println!("string of pubkey, {:#?}", pubkey_str);
                         let smtg: SmtgWithPubkey<TE> =
                             serde_json::from_str(pubkey_str).expect("no pubkey");
                         smtg.pubkey
@@ -439,13 +446,43 @@ pub(crate) mod test {
                 let res_text = res
                     .text()
                     .map_err(|e| format!("Failed to read response body: {}", e));
-                // Convert NoteHistorySaved to the format expected by super::msg::response::Notes
-                let notes: Vec<EncryptedNoteHistory<ConcreteIVC>> =
+
+                let note_history: Vec<crate::service_schema::NoteHistorySaved> =
                     serde_json::from_str(&res_text.unwrap()).unwrap();
-                println!("{:#?}", notes);
-                Ok(super::msg::response::Notes { notes })
+
+                let encrypted_note_history: Vec<EncryptedNoteHistory<ConcreteIVC>> = note_history
+                    .into_iter()
+                    .map(|nh| {
+                        self.convert_note_history_to_encrypted_note_history(
+                            nh,
+                            msg.username.clone(),
+                        )
+                    })
+                    .collect();
+
+                Ok(super::msg::response::Notes {
+                    notes: encrypted_note_history,
+                })
             } else {
                 Err(format!("Request failed with status: {}", res.status()))
+            }
+        }
+
+        fn convert_note_history_to_encrypted_note_history(
+            &self,
+            nh: crate::service_schema::NoteHistorySaved,
+            username: String,
+        ) -> EncryptedNoteHistory<ConcreteIVC> {
+            // Parse the address string to extract sender information
+            let contact = self
+                .get_user_from_db(crate::service_schema::UserIdentifier::Username(
+                    username.clone(),
+                ))
+                .expect("couldn't get contact");
+            println!("{:#?}", contact);
+            EncryptedNoteHistory {
+                sender: contact,
+                encrypted: crate::cipher::EncryptedData { data: nh.data },
             }
         }
     }
