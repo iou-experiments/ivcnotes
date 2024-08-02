@@ -1,7 +1,7 @@
 use crate::{
     circuit::IVC,
     note::{EncryptedNoteHistory, NoteHistory},
-    service_schema::{NoteHistoryRequest, SaveNoteHistoryRequestSchema, UserIdentifier},
+    service_schema::UserIdentifier,
     wallet::{Contact, Wallet},
     Address, Error,
 };
@@ -20,7 +20,7 @@ pub trait Service<E: IVC> {
     fn get_notes(
         &self,
         msg: &msg::request::GetNotes<E::Field>,
-    ) -> Result<msg::response::Notes<E>, crate::Error>;
+    ) -> Result<msg::response::Notes<E>, String>;
     fn get_user_from_db(&self, identifier: UserIdentifier) -> Result<Contact<E>, String>;
 }
 
@@ -52,6 +52,7 @@ pub mod msg {
         pub struct GetNotes<F: PrimeField> {
             #[serde(with = "crate::ark_serde")]
             pub receiver: Address<F>,
+            pub username: String,
         }
     }
 
@@ -128,8 +129,13 @@ impl<E: IVC> Wallet<E> {
     pub fn get_notes(&mut self) -> Result<(), crate::Error> {
         let msg = msg::request::GetNotes {
             receiver: *self.address(),
+            username: self.username.to_string(),
         };
-        let notes = self.comm.service.get_notes(&msg)?;
+        let notes = self
+            .comm
+            .service
+            .get_notes(&msg)
+            .expect("failed to get notes from db");
         let note_histories: Vec<NoteHistory<E>> = notes
             .notes
             .into_iter()
@@ -410,18 +416,37 @@ pub(crate) mod test {
         fn get_notes(
             &self,
             msg: &super::msg::request::GetNotes<Fr>,
-        ) -> Result<super::msg::response::Notes<ConcreteIVC>, crate::Error> {
-            let shared = self.shared.borrow();
-            let last_access = shared.last_access.get(&msg.receiver).unwrap_or(&0);
-            let notes = shared
-                .queue
-                .get(&msg.receiver)
-                .unwrap_or(&vec![])
-                .iter()
-                .skip(*last_access)
-                .cloned()
-                .collect::<Vec<_>>();
-            Ok(super::msg::response::Notes { notes })
+        ) -> Result<super::msg::response::Notes<ConcreteIVC>, String> {
+            let client = reqwest::blocking::Client::new();
+
+            let username_request = crate::service_schema::UsernameRequest {
+                username: msg.username.clone(), // Assuming receiver is the username we want to fetch notes for
+            };
+
+            let json_body = serde_json::to_string(&username_request)
+                .expect("Failed to serialize UsernameRequest");
+
+            let res = client
+                .get("http://167.172.25.99/get_note_history_for_user") // Adjust the URL as needed
+                .header("Accept", "*/*")
+                .header("Content-Type", "application/json")
+                .body(json_body)
+                .send()
+                .map_err(|e| format!("Failed to send request: {}", e))
+                .expect("no client");
+
+            if res.status().is_success() {
+                let res_text = res
+                    .text()
+                    .map_err(|e| format!("Failed to read response body: {}", e));
+                // Convert NoteHistorySaved to the format expected by super::msg::response::Notes
+                let notes: Vec<EncryptedNoteHistory<ConcreteIVC>> =
+                    serde_json::from_str(&res_text.unwrap()).unwrap();
+                println!("{:#?}", notes);
+                Ok(super::msg::response::Notes { notes })
+            } else {
+                Err(format!("Request failed with status: {}", res.status()))
+            }
         }
     }
 }

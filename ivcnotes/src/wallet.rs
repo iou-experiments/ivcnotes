@@ -16,7 +16,7 @@ use arkeddsa::PublicKey;
 use rand::{CryptoRng, RngCore};
 use serde_derive::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 
 pub struct Contact<E: IVC> {
     #[serde(with = "crate::ark_serde")]
@@ -495,7 +495,7 @@ pub(crate) mod test {
         let asset = Asset::new(w0.address(), terms);
 
         w0.issue(&mut OsRng, &asset, 1000, "user1").unwrap();
-        // w1.get_notes().unwrap();
+        w1.get_notes().unwrap();
 
         // w1.split(&mut OsRng, 0, 800, "user2").unwrap();
         // w2.get_notes().unwrap();

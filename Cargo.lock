@@ -1132,6 +1132,7 @@ dependencies = [
  "ark-std",
  "arkeddsa",
  "bincode",
+ "bson",
  "cbc",
  "colored",
  "digest",

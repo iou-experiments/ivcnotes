@@ -10,7 +10,7 @@ pub struct User {
     pub username: Option<String>,
     pub pubkey: Option<String>,
     pub messages: Option<Vec<String>>,
-    pub notes: Option<Vec<String>>,
+    pub notes: Option<Vec<bson::oid::ObjectId>>,
     pub address: Option<String>,
 }
 
@@ -90,7 +90,7 @@ pub struct MessageSchema {
     pub sender: String,
     pub message: String,
     pub timestamp: i64,
-    pub attachment_id: String,
+    pub attachment_id: Option<Bson>,
     pub read: bool,
     pub _id: Option<Bson>,
 }

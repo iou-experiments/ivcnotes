@@ -36,6 +36,7 @@ mongodb = "3.0.1"
 hex = "0.4.3"
 
 colored.workspace = true
+bson = "2.11.0"
 
 [features]
 default = ["r1cs", "snark"]
