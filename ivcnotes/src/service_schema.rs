@@ -157,7 +157,7 @@ pub struct MessageSingleResponse {
     pub status: &'static str,
     pub message: MessageSchema,
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NullifierResponseData {
     pub status: &'static str,
     pub nullifier: NoteNullifierSchema,

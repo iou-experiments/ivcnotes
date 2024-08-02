@@ -477,15 +477,9 @@ pub(crate) mod test {
 
         let mut w0 = new_wallet("user0");
         let mut w1 = new_wallet("user1");
-        let mut w2 = new_wallet("user2");
-        let mut w3 = new_wallet("user3");
-        let mut w4 = new_wallet("user4");
 
         w0.register().unwrap();
         w1.register().unwrap();
-        w2.register().unwrap();
-        w3.register().unwrap();
-        w4.register().unwrap();
 
         let res1 = w0.find_contact_by_username("user0");
         let res2 = w1.find_contact_by_username("user1");
@@ -494,10 +488,10 @@ pub(crate) mod test {
         let terms = &asset::Terms::iou(365, 1);
         let asset = Asset::new(w0.address(), terms);
 
-        w0.issue(&mut OsRng, &asset, 1000, "user1").unwrap();
+        w0.issue(&mut OsRng, &asset, 1000, "user0").unwrap();
         w1.get_notes().unwrap();
 
-        // w1.split(&mut OsRng, 0, 800, "user2").unwrap();
+        // w1.split(&mut OsRng, 0, 800, "user1").unwrap();
         // w2.get_notes().unwrap();
 
         // w2.split(&mut OsRng, 0, 700, "user3").unwrap();

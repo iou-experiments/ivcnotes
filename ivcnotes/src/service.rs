@@ -27,6 +27,17 @@ pub trait Service<E: IVC> {
         nh: NoteHistorySaved,
         username: String,
     ) -> EncryptedNoteHistory<E>;
+    fn store_nullifier(
+        &self,
+        nullifier: String,
+        state: String,
+        owner: String,
+    ) -> Result<crate::service_schema::NullifierResponseData, String>;
+    fn get_nullifier(
+        &self,
+        nullifier: String,
+        expected_state: String,
+    ) -> Result<crate::service_schema::NullifierResponse, String>;
 }
 
 // response request messages between server and client
@@ -167,7 +178,9 @@ pub(crate) mod test {
     use crate::{
         circuit::test::ConcreteIVC,
         note::EncryptedNoteHistory,
-        service_schema::{IdentifierWrapper, SaveNoteHistoryRequestSchema, User, UserIdentifier},
+        service_schema::{
+            IdentifierWrapper, NullifierRequest, SaveNoteHistoryRequestSchema, User, UserIdentifier,
+        },
         wallet::Contact,
         Address,
     };
@@ -250,8 +263,7 @@ pub(crate) mod test {
             &self,
             msg: &super::msg::request::Register<ConcreteIVC>,
         ) -> Result<(), crate::Error> {
-            let sk: SigningKey<TE> = SigningKey::generate::<sha2::Sha512>(&mut OsRng).unwrap();
-            let pubkey = sk.public_key().clone();
+            let pubkey = msg.public_key.clone();
             // serialization with crate::serde
             let smtg_pubkey = SmtgWithPubkey { pubkey };
             let smtg_address = SmtgWithAddress {
@@ -483,6 +495,108 @@ pub(crate) mod test {
             EncryptedNoteHistory {
                 sender: contact,
                 encrypted: crate::cipher::EncryptedData { data: nh.data },
+            }
+        }
+
+        fn store_nullifier(
+            &self,
+            nullifier: String,
+            state: String,
+            owner: String,
+        ) -> Result<crate::service_schema::NullifierResponseData, String> {
+            let client = reqwest::blocking::Client::new();
+
+            let nullifier_schema = crate::service_schema::NoteNullifierSchema {
+                nullifier,
+                state,
+                owner,
+                step: 1,
+                note: "1".to_owned(),
+            };
+
+            let json_body = serde_json::to_string(&nullifier_schema)
+                .expect("Failed to serialize NoteNullifierSchema");
+
+            let res = client
+                .post("http://167.172.25.99/store_nullifier")
+                .header("Accept", "*/*")
+                .header("Content-Type", "application/json")
+                .body(json_body)
+                .send()
+                .map_err(|e| format!("Failed to send request: {}", e))
+                .expect("failed to store");
+
+            if res.status().is_success() {
+                let response_text = res
+                    .text()
+                    .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+                let mut json: serde_json::Value = serde_json::from_str(&response_text)
+                    .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+                // Convert the status to a static str
+                let status = match json["status"].as_str() {
+                    Some("success") => "success",
+                    Some("not_found") => "not_found",
+                    _ => "error",
+                };
+
+                let nullifier = serde_json::from_value(json["nullifier"].take())
+                    .map_err(|e| format!("Failed to parse nullifier: {}", e))?;
+
+                Ok(crate::service_schema::NullifierResponseData { status, nullifier })
+            } else {
+                Err(format!("Request failed with status: {}", res.status()))
+            }
+        }
+
+        fn get_nullifier(
+            &self,
+            nullifier: String,
+            expected_state: String,
+        ) -> Result<crate::service_schema::NullifierResponse, String> {
+            let client = reqwest::blocking::Client::new();
+            let json_body = serde_json::to_string(&crate::service_schema::NullifierRequest {
+                nullifier,
+                state: expected_state,
+            })
+            .expect("couldn't serialize nullifier request");
+
+            let res = client
+                .get("http://167.172.25.99/verify_nullifier/")
+                .header("Accept", "*/*")
+                .header("Content-Type", "application/json")
+                .body(json_body)
+                .send()
+                .map_err(|e| format!("Failed to send request: {}", e))?;
+
+            if res.status().is_success() {
+                let response_text = res
+                    .text()
+                    .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+                let mut json: serde_json::Value = serde_json::from_str(&response_text)
+                    .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+                // Convert the status to a static str
+                let status = match json["status"].as_str() {
+                    Some("success") => "success",
+                    Some("not_found") => "not_found",
+                    _ => "error",
+                };
+
+                let nullifier = serde_json::from_value(json["nullifier"].take())
+                    .map_err(|e| format!("Failed to parse nullifier: {}", e))?;
+
+                let response_data =
+                    crate::service_schema::NullifierResponseData { status, nullifier };
+                Ok(crate::service_schema::NullifierResponse::Ok(
+                    response_data.nullifier,
+                ))
+            } else if res.status() == reqwest::StatusCode::NOT_FOUND {
+                Ok(crate::service_schema::NullifierResponse::NotFound)
+            } else {
+                Ok(crate::service_schema::NullifierResponse::Error)
             }
         }
     }
