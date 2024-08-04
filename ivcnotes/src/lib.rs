@@ -14,6 +14,7 @@ pub mod pretty;
 pub mod service;
 pub mod tx;
 pub mod wallet;
+pub use arkeddsa::PublicKey;
 
 crate::field_wrap!(SigHash);
 crate::field_wrap!(Address);
@@ -25,16 +26,25 @@ crate::field_wrap!(Blind);
 crate::field_wrap!(NoteHash);
 crate::field_wrap!(BlindNoteHash);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    With(&'static str),
+    Custom(String),
+    Data(String),
+    External(String),
+    Verify(String),
+    Service(String),
 }
 
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match *self {
-            Self::With(s) => write!(f, "{}", s),
-        }
+        let string = match self {
+            Self::Custom(s)
+            | Self::Data(s)
+            | Self::External(s)
+            | Self::Verify(s)
+            | Self::Service(s) => s.clone(),
+        };
+        write!(f, "{}", string)
     }
 }
 
@@ -65,6 +75,10 @@ pub trait FWrap<F: ark_ff::PrimeField>: From<F> + AsRef<F> + Clone + Copy {
     fn from_bytes(bytes: &[u8]) -> Result<Self, Box<dyn ark_std::error::Error>> {
         let deserialized = F::deserialize_compressed(bytes)?;
         Ok(deserialized.into())
+    }
+
+    fn from_bignumber(bytes: &[u8]) -> Self {
+        F::from_le_bytes_mod_order(bytes).into()
     }
 
     fn reduce_bytes(bytes: &[u8]) -> Self {
@@ -117,9 +131,6 @@ macro_rules! field_wrap {
 
         impl<F: ark_ff::PrimeField> core::fmt::Debug for $name<F> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                // let bytes = self.to_bytes();
-                // write!(f, "0x")?;
-                // bytes.iter().rev().try_for_each(|&b| write!(f, "{:02x}", b))
                 write!(f, "{}", self.0.to_string())
             }
         }

@@ -39,6 +39,7 @@ pub mod msg {
         }
 
         #[derive(Clone, Serialize, Deserialize)]
+        #[serde(bound = "E: IVC")]
         pub struct Note<E: IVC> {
             pub note_history: EncryptedNoteHistory<E>,
             #[serde(with = "crate::ark_serde")]
@@ -59,6 +60,7 @@ pub mod msg {
         pub type Contact<E> = crate::wallet::Contact<E>;
 
         #[derive(Clone, Serialize, Deserialize)]
+        #[serde(bound = "E: IVC")]
         pub struct Notes<E: IVC> {
             pub notes: Vec<EncryptedNoteHistory<E>>,
         }
@@ -173,27 +175,6 @@ pub(crate) mod test {
                 shared: Rc::clone(&self.shared),
             }
         }
-
-        // pub(crate) fn log_contacts(&self) {
-        //     let shared = self.shared.borrow();
-        //     for contact in shared.contacts.values() {
-        //         println!("{:?}", contact);
-        //     }
-        // }
-
-        // pub(crate) fn log_messages(&self) {
-        //     let shared = self.shared.borrow();
-        //     for (address, messages) in shared.queue.iter() {
-        //         println!("msg for {:?}", address);
-        //         for message in messages {
-        //             println!(
-        //                 "sender {:?}, len: {}",
-        //                 message.sender.username,
-        //                 message.encrypted.data.len()
-        //             );
-        //         }
-        //     }
-        // }
     }
 
     impl<E: IVC> Service<E> for SharedMockService<E> {
@@ -220,7 +201,7 @@ pub(crate) mod test {
                         .contacts
                         .values()
                         .find(|contact| contact.username == *username)
-                        .ok_or(crate::Error::With("contact not found"))?;
+                        .ok_or(crate::Error::Service("contact not found".into()))?;
                     Ok(contact.clone())
                 }
                 super::msg::request::GetContact::Address(address) => {
@@ -228,7 +209,7 @@ pub(crate) mod test {
                     let contact = shared
                         .contacts
                         .get(address)
-                        .ok_or(crate::Error::With("contact not found"))?;
+                        .ok_or(crate::Error::Service("contact not found".into()))?;
                     Ok(contact.clone())
                 }
             }

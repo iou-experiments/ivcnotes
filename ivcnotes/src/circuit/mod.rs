@@ -1,9 +1,12 @@
+use std::io::Read;
+
 use crate::poseidon::PoseidonConfigs;
 use ark_crypto_primitives::snark::SNARK;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::twisted_edwards::TECurveConfig;
 use ark_ff::PrimeField;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Result as CSResult};
+use ark_serialize::CanonicalDeserialize;
 use cs::synth;
 use inputs::{AuxInputs, PublicInput};
 use rand::{CryptoRng, RngCore};
@@ -18,6 +21,20 @@ pub trait IVC: Clone {
     type Field: PrimeField + Absorb;
     // inner curve - (baby)jubjub config
     type TE: TECurveConfig<BaseField = Self::Field> + Clone;
+
+    fn read_proving_key<R: Read>(
+        reader: R,
+    ) -> Result<<Self::Snark as SNARK<Self::Field>>::ProvingKey, crate::Error> {
+        <Self::Snark as SNARK<Self::Field>>::ProvingKey::deserialize_compressed(reader)
+            .map_err(|e| crate::Error::Data(format!("proving key deserialization failed: {}", e)))
+    }
+
+    fn read_verifying_key<R: Read>(
+        reader: R,
+    ) -> Result<<Self::Snark as SNARK<Self::Field>>::VerifyingKey, crate::Error> {
+        <Self::Snark as SNARK<Self::Field>>::VerifyingKey::deserialize_compressed(reader)
+            .map_err(|e| crate::Error::Data(format!("verifying key deserialization failed: {}", e)))
+    }
 }
 
 pub struct Circuit<'a, E: IVC> {
@@ -76,7 +93,7 @@ impl<E: IVC> Prover<E> {
     ) -> Result<<<E as IVC>::Snark as SNARK<E::Field>>::Proof, crate::Error> {
         let circuit = Circuit::new(h, public, aux);
         <E as IVC>::Snark::prove(&self.pk, circuit, rng)
-            .map_err(|_err| crate::Error::With("proof generation failed"))
+            .map_err(|e| crate::Error::Data(format!("proof generation failed: {}", e)))
     }
 }
 
@@ -92,7 +109,7 @@ impl<E: IVC> Verifier<E> {
     ) -> Result<bool, crate::Error> {
         let pi = pi.to_verifier();
         E::Snark::verify(&self.vk, &pi, proof)
-            .map_err(|_err| crate::Error::With("verification failed"))
+            .map_err(|e| crate::Error::Data(format!("verification failed: {}", e)))
     }
 }
 
@@ -108,7 +125,12 @@ pub mod concrete {
     use ark_ed_on_bn254::EdwardsConfig;
     use ark_ff::PrimeField;
     use ark_groth16::{Groth16, ProvingKey, VerifyingKey};
+    use lazy_static::lazy_static;
     use rand_core::OsRng;
+
+    lazy_static! {
+        pub static ref POSEIDON_CFG: PoseidonConfigs::<Fr> = poseidon_cfg();
+    }
 
     type JubJub = EdwardsConfig;
 
@@ -150,8 +172,7 @@ pub mod concrete {
     }
 
     pub fn circuit_setup() -> (ProvingKey<Bn254>, VerifyingKey<Bn254>) {
-        let poseidon_cfg = poseidon_cfg();
-        let circuit: Circuit<Concrete> = Circuit::empty(&poseidon_cfg);
+        let circuit: Circuit<Concrete> = Circuit::empty(&POSEIDON_CFG);
         Groth16::<Bn254>::setup(circuit, &mut OsRng).unwrap()
     }
 
@@ -173,7 +194,7 @@ pub(crate) mod test {
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use rand::{CryptoRng, RngCore};
 
-    use crate::{wallet::Contact, Error};
+    use crate::wallet::Contact;
 
     use super::IVC;
 
@@ -187,7 +208,7 @@ pub(crate) mod test {
         type VerifyingKey = MockArkElement;
         type Proof = MockArkElement;
         type ProcessedVerifyingKey = MockArkElement;
-        type Error = Error;
+        type Error = crate::Error;
 
         fn circuit_specific_setup<C: ConstraintSynthesizer<F>, R: RngCore + CryptoRng>(
             _circuit: C,

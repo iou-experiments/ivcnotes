@@ -111,18 +111,18 @@ impl<E: IVC> Auth<E> {
         let sighash = h.sighash_split_tx(tx);
         let signature = self.sign_tx(&sighash);
         let (note_in, _) = h.note(&tx.note_in);
-        let nullifier = h.nullifier(&note_in, self.nullifier_key());
+        let nullifier = h.nullifier(&note_in, &self.nullifier_key());
         Ok(tx.seal(&signature, &nullifier))
     }
 }
 
-impl<E: IVC> Wallet<E> {
-    pub fn log_notes(&mut self) {
-        for note in self.pretty_notes().unwrap() {
-            println!("{}", note);
-        }
-    }
-}
+// impl<E: IVC> Wallet<E> {
+//     pub fn log_notes(&mut self) {
+//         for note in self.pretty_notes().unwrap() {
+//             println!("{}", note);
+//         }
+//     }
+// }
 
 impl<E: IVC> Wallet<E> {
     pub fn new(
@@ -210,7 +210,7 @@ impl<E: IVC> Wallet<E> {
             &receiver.address,
             public_key,
             signature,
-            nullifier_key,
+            &nullifier_key,
             &Default::default(),
             &NoteOutIndex::Out1,
             0,
@@ -256,7 +256,7 @@ impl<E: IVC> Wallet<E> {
         let note_history = self
             .spendables
             .get_mut(spendable_index)
-            .ok_or(crate::Error::With("bad spendable index"))?;
+            .ok_or(crate::Error::Custom("bad spendable index".into()))?;
 
         let note_in = note_history.current_note;
         let (_, blind_note_in) = self.h.note(&note_in);
@@ -269,7 +269,7 @@ impl<E: IVC> Wallet<E> {
         let value_out_0 = note_in
             .value
             .checked_sub(value)
-            .ok_or(crate::Error::With("insufficient funds"))?;
+            .ok_or(crate::Error::Custom("insufficient funds".into()))?;
         let value_out_1 = value;
 
         // create change note, output 0
@@ -326,7 +326,7 @@ impl<E: IVC> Wallet<E> {
             &receiver.address,
             public_key,
             signature,
-            nullifier_key,
+            &nullifier_key,
             parent,
             input_index,
             value_in,
@@ -395,18 +395,15 @@ impl<E: IVC> Wallet<E> {
             if i == note_history.steps.len() - 1 {
                 (note_history.state(&self.h) == *state_out)
                     .then_some(())
-                    .ok_or(crate::Error::With("bad current state"))?;
+                    .ok_or(crate::Error::Verify("bad current state".into()))?;
             }
             use ark_serialize::CanonicalSerialize;
             let mut bytes = Vec::new();
             step.proof.serialize_compressed(&mut bytes).unwrap();
-            let verified = self
-                .verifier
-                .verify_proof(&step.proof, &public_input)
-                .map_err(|_| crate::Error::With("verification process failed"))?;
+            let verified = self.verifier.verify_proof(&step.proof, &public_input)?;
             if !verified {
                 println!("not verified {}", i);
-                return Err(crate::Error::With("not verified"));
+                return Err(crate::Error::Verify("not verified".into()));
             }
             state_in = state_out;
         }
@@ -480,7 +477,7 @@ pub(crate) mod test {
         w3.split(&mut OsRng, 0, 2, "user4").unwrap();
         w4.get_notes().unwrap();
 
-        w3.log_notes();
-        w4.log_notes();
+        // w3.log_notes();
+        // w4.log_notes();
     }
 }

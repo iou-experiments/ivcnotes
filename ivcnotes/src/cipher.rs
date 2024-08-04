@@ -1,6 +1,5 @@
 use crate::Error;
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
-use serde::{Deserialize, Serialize};
 use serde_derive::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -59,8 +58,8 @@ pub trait CipherText: serde::Serialize + for<'de> serde::Deserialize<'de> {
 
     fn decrypt(shared_key: &[u8; 32], data: &EncryptedData) -> Result<Self, Error> {
         let data = decrypt(shared_key, data.as_ref());
-        bincode::deserialize(&data).map_err(|_| Error::With("decryption failed"))
+        bincode::deserialize(&data).map_err(|e| Error::Data(format!("decryption failed: {}", e)))
     }
 }
 
-impl<T: Serialize + for<'de> Deserialize<'de>> CipherText for T {}
+impl<T: serde::Serialize + for<'de> serde::Deserialize<'de>> CipherText for T {}

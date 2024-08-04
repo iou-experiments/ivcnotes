@@ -4,44 +4,33 @@ use crate::{
     poseidon::PoseidonConfigs,
     Address, Error, FWrap, NullifierKey, SigHash,
 };
-use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
+use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
+use ark_ff::PrimeField;
 use arkeddsa::{signature::Signature, PublicKey, SigningKey};
 use rand_core::CryptoRngCore;
-type PreHash = sha2::Sha512;
+use sha2::Digest;
 
-#[derive(Debug)]
-// Signer has the signer key and eddsa poseidon config
-pub struct Signer<E: IVC> {
-    signing_key: SigningKey<E::TE>,
-    poseidon: PoseidonConfig<E::Field>,
-}
-
-impl<E: IVC> Signer<E> {
-    pub(crate) fn generate(
-        poseidon: &PoseidonConfig<E::Field>,
-        rng: &mut impl CryptoRngCore,
-    ) -> Self {
-        let signing_key = SigningKey::generate::<PreHash>(rng).unwrap();
-        Self {
-            signing_key,
-            poseidon: poseidon.clone(),
-        }
-    }
-
-    pub(crate) fn sign<A: Absorb>(&self, msg: &[A]) -> Signature<E::TE> {
-        self.signing_key.sign::<PreHash, A>(&self.poseidon, msg)
-    }
-
-    pub(crate) fn public_key(&self) -> &PublicKey<E::TE> {
-        self.signing_key.public_key()
-    }
-}
-
-// `Id` holds user secrets and public address
 pub struct Auth<E: IVC> {
-    nullifier_key: NullifierKey<E::Field>,
-    signer: Signer<E>,
+    h: PoseidonConfig<E::Field>,
+    secret: [u8; 32],
     address: Address<E::Field>,
+    public_key: PublicKey<E::TE>,
+}
+
+fn nullifier_key<F: PrimeField>(secret: &[u8; 32]) -> NullifierKey<F> {
+    let mut d = sha2::Sha512::new();
+    d.update(b"nullifier");
+    d.update(secret);
+    let nullifier = d.finalize();
+    NullifierKey::from_bignumber(&nullifier[..])
+}
+
+fn signer<E: IVC>(secret: &[u8; 32]) -> SigningKey<E::TE> {
+    let mut d = sha2::Sha512::new();
+    d.update(b"eddsa");
+    d.update(secret);
+    let secret = d.finalize().to_vec();
+    SigningKey::from_bytes::<sha2::Sha512>(&secret[00..32].try_into().unwrap()).unwrap()
 }
 
 impl<E: IVC> Auth<E> {
@@ -49,14 +38,34 @@ impl<E: IVC> Auth<E> {
         h: &PoseidonConfigs<E::Field>,
         rng: &mut impl CryptoRngCore,
     ) -> Result<Self, Error> {
-        let signer = Signer::generate(&h.eddsa, rng);
-        let nullifier_key = NullifierKey::rand(rng);
+        let mut secret = [0; 32];
+        rng.fill_bytes(&mut secret);
+        Self::new(h, secret)
+    }
+
+    pub fn new(h: &PoseidonConfigs<E::Field>, secret: [u8; 32]) -> Result<Self, Error> {
+        let signer: SigningKey<E::TE> = signer::<E>(&secret);
+        let nullifier_key = nullifier_key(&secret);
         let address = h.id_commitment(&nullifier_key, signer.public_key());
+        let public_key = signer.public_key().clone();
         Ok(Self {
-            nullifier_key,
-            signer,
+            secret,
             address,
+            public_key,
+            h: h.eddsa.clone(),
         })
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.secret.to_vec()
+    }
+
+    pub fn address(&self) -> &Address<E::Field> {
+        &self.address
+    }
+
+    pub(crate) fn nullifier_key(&self) -> NullifierKey<E::Field> {
+        nullifier_key(&self.secret)
     }
 
     pub(crate) fn encrypt<T: CipherText>(
@@ -77,24 +86,20 @@ impl<E: IVC> Auth<E> {
         T::decrypt(&shared, data)
     }
 
-    pub(crate) fn address(&self) -> &Address<E::Field> {
-        &self.address
-    }
-
-    pub(crate) fn nullifier_key(&self) -> &NullifierKey<E::Field> {
-        &self.nullifier_key
-    }
-
     pub(crate) fn public_key(&self) -> &PublicKey<E::TE> {
-        self.signer.public_key()
+        &self.public_key
+    }
+
+    pub(crate) fn signer(&self) -> SigningKey<E::TE> {
+        signer::<E>(&self.secret)
     }
 
     pub(crate) fn shared_key(&self, receiver: &PublicKey<E::TE>) -> [u8; 32] {
-        // TODO use different key for shared key
-        self.signer.signing_key.shared_key::<sha2::Sha512>(receiver)
+        self.signer().shared_key::<sha2::Sha512>(receiver)
     }
 
     pub(crate) fn sign_tx(&self, msg: &SigHash<E::Field>) -> Signature<E::TE> {
-        self.signer.sign(&[msg.inner()])
+        self.signer()
+            .sign::<sha2::Sha512, _>(&self.h, &[msg.inner()])
     }
 }

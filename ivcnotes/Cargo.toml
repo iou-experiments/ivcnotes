@@ -18,6 +18,7 @@ ark-relations.workspace = true
 ark-serialize.workspace = true
 ark-std.workspace = true
 arkeddsa.workspace = true
+lazy_static.workspace = true
 
 rand.workspace = true
 rand_core.workspace = true
@@ -31,8 +32,6 @@ bincode.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
 serde_json.workspace = true
-
-colored.workspace = true
 
 [features]
 default = ["r1cs", "snark"]
