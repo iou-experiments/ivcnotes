@@ -9,6 +9,7 @@ type TE = ark_ed_on_bn254::EdwardsConfig;
 use ivcnotes::circuit::IVC;
 use ivcnotes::service::msg;
 use ivcnotes::Error;
+use ivcnotes::FWrap;
 use ivcnotes::{circuit::concrete::Concrete, service::Service};
 use reqwest::{Method, Url};
 use serde_derive::{Deserialize, Serialize};
@@ -216,20 +217,17 @@ impl BlockingHttpClient {
 
 impl Service<Concrete> for BlockingHttpClient {
     fn register(&self, msg: &msg::request::Register<Concrete>) -> Result<(), Error> {
-        let sk: arkeddsa::SigningKey<TE> =
-            arkeddsa::SigningKey::generate::<sha2::Sha512>(&mut rand_core::OsRng).unwrap();
-        let pubkey = sk.public_key().clone();
-        let smtg_pubkey = SmtgWithPubkey { pubkey };
         let smtg_address = SmtgWithAddress {
             address: msg.address.clone(), // Clone the address field
         };
-        let pubkey_json = serde_json::to_string(&smtg_pubkey).unwrap();
-        let address_json = serde_json::to_string(&smtg_address).unwrap();
+        let address_bytes = msg.address.to_bytes();
+        let pubkey_bytes = msg.address.to_bytes();
 
         let create_user_schema = CreateUserSchema {
             username: msg.username.clone(),
-            address: address_json,
-            pubkey: pubkey_json,
+            // todo: round trip test needed
+            address: serde_json::to_string(&address_bytes).expect("failed to serialize address"),
+            pubkey: serde_json::to_string(&pubkey_bytes).expect("failed to serialize pubkey"),
             nonce: String::new(),
             messages: Vec::new(),
             notes: Vec::new(),
