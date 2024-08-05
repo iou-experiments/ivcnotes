@@ -8,6 +8,7 @@ use ivcnotes::circuit::concrete::{Concrete, POSEIDON_CFG};
 use ivcnotes::id::Auth;
 use ivcnotes::FWrap;
 use serde_derive::{Deserialize, Serialize};
+use service::blocking::{BlockingHttpClient, HttpScheme};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
@@ -40,6 +41,30 @@ pub(crate) struct Creds {
 use crate::CreateArgs;
 
 impl Creds {
+    pub(crate) fn register(
+        username: String,
+        address: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let client = BlockingHttpClient::new(
+            HttpScheme::Http,
+            "167.172.25.99", // Replace with your actual host
+            Some(80),        // Replace with your actual port
+        );
+
+        let address = ivcnotes::Address::<Concrete>::from_str(&address)
+            .map_err(|_| "Failed to parse address")?;
+
+        let register_msg = ivcnotes::service::msg::request::Register {
+            username: username.clone(),
+            address,
+        };
+
+        client.register(&register_msg)?;
+
+        println!("Successfully registered user: {}", username);
+        Ok(())
+    }
+
     pub(crate) fn generate(args: &CreateArgs) -> std::io::Result<()> {
         println!("{}", "> Generating new key...".blue());
         let auth = Auth::<Concrete>::generate(&POSEIDON_CFG, &mut OsRng).unwrap();

@@ -6,10 +6,6 @@ license.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
-[[bin]]
-name = "service"
-path = "src/main.rs"
-
 [dependencies]
 ivcnotes.workspace = true
 ark-ec.workspace = true

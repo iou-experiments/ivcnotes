@@ -17,7 +17,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Create(CreateArgs),
-    Register,
+    Register(RegisterArgs),
     Info,
     Reset,
 }
@@ -43,7 +43,11 @@ fn main() {
     match &cli.command {
         Commands::Create(args) => Creds::generate(args).unwrap(),
         Commands::Info => FileMan::list_accounts(),
-        Commands::Register => {}
+        Commands::Register(args) => {
+            if let Err(e) = Creds::register(args.username.clone(), args.address.clone()) {
+                eprintln!("Failed to register user: {:?}", e);
+            }
+        }
         Commands::Reset => FileMan::clear_contents().unwrap(),
     }
 }
