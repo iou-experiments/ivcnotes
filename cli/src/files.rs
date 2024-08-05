@@ -60,7 +60,7 @@ impl Creds {
             address,
         };
 
-        client.register(&register_msg)?;
+        client.register(register_msg);
 
         println!("Successfully registered user: {}", username);
         Ok(())
