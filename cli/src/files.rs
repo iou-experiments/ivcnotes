@@ -36,6 +36,7 @@ pub(crate) struct Creds {
     pub(crate) username: String,
     pub(crate) address: String,
     pub(crate) auth: Vec<u8>,
+    // to do, we need pubkey?
 }
 
 use crate::CreateArgs;
