@@ -1,3 +1,9 @@
+use crate::schema::{
+    CreateUserSchema, IdentifierWrapper, NoteHistoryRequest, NoteHistorySaved, NoteNullifierSchema,
+    NullifierRequest, NullifierResponse, NullifierResponseData, SaveNoteHistoryRequestSchema,
+    SmtgWithAddress, SmtgWithPubkey, User, UserIdentifier, UsernameRequest,
+};
+
 use ark_bn254;
 use ark_ec::TEModelParameters as TE;
 use ivcnotes::circuit::IVC;
@@ -92,6 +98,8 @@ impl BlockingHttpClient {
             Path::GetUser => "get_user",
             Path::CreateAndTransferNoteHistory => "create_and_transfer_note_history",
             Path::GetNoteHistoryForUser => "get_note_history_for_user",
+            Path::StoreNullifier => "store_nullifier",
+            Path::VerifyNullifier => "verify_nullifier",
         };
         url.set_path(path);
         url
@@ -125,6 +133,70 @@ impl BlockingHttpClient {
             address,
             username: res.username.ok_or("Username is None")?,
         })
+    }
+
+    pub fn store_nullifier(
+        &self,
+        nullifier: String,
+        state: String,
+        owner: String,
+    ) -> Result<NullifierResponseData, String> {
+        let nullifier_schema = NoteNullifierSchema {
+            nullifier,
+            state,
+            owner,
+            step: 1,
+            note: "1".to_owned(),
+        };
+
+        let url = self.path(Path::StoreNullifier);
+        let res: serde_json::Value = send(Method::POST, url, &nullifier_schema)
+            .map_err(|e| format!("Failed to store nullifier: {}", e))?;
+
+        let status = match res["status"].as_str() {
+            Some("success") => "success",
+            Some("not_found") => "not_found",
+            _ => "error",
+        };
+
+        let nullifier = serde_json::from_value(res["nullifier"].clone())
+            .map_err(|e| format!("Failed to parse nullifier: {}", e))?;
+
+        Ok(NullifierResponseData { status, nullifier })
+    }
+
+    pub fn get_nullifier(
+        &self,
+        nullifier: String,
+        expected_state: String,
+    ) -> Result<NullifierResponse, String> {
+        let nullifier_request = NullifierRequest {
+            nullifier,
+            state: expected_state,
+        };
+
+        let url = self.path(Path::VerifyNullifier);
+        let result: Result<serde_json::Value, Error> = send(Method::GET, url, &nullifier_request);
+
+        match result {
+            Ok(json) => {
+                let status = match json["status"].as_str() {
+                    Some("success") => "success",
+                    Some("not_found") => "not_found",
+                    _ => "error",
+                };
+
+                let nullifier = serde_json::from_value(json["nullifier"].clone())
+                    .map_err(|e| format!("Failed to parse nullifier: {}", e))?;
+
+                let response_data = NullifierResponseData { status, nullifier };
+                Ok(NullifierResponse::Ok(response_data.nullifier))
+            }
+            Err(Error::Service(e)) if e.contains("404 Not Found") => {
+                Ok(NullifierResponse::NotFound)
+            }
+            Err(_) => Ok(NullifierResponse::Error),
+        }
     }
 }
 
@@ -230,73 +302,6 @@ impl Service<Concrete> for BlockingHttpClient {
         Ok(msg::response::Notes {
             notes: encrypted_note_history,
         })
-    }
-
-    pub fn store_nullifier(
-        &self,
-        nullifier: String,
-        state: String,
-        owner: String,
-    ) -> Result<crate::service_schema::NullifierResponseData, String> {
-        let nullifier_schema = crate::service_schema::NoteNullifierSchema {
-            nullifier,
-            state,
-            owner,
-            step: 1,
-            note: "1".to_owned(),
-        };
-
-        let url = self.path(Path::StoreNullifier);
-        let res: serde_json::Value = send(Method::POST, url, &nullifier_schema)
-            .map_err(|e| format!("Failed to store nullifier: {}", e))?;
-
-        let status = match res["status"].as_str() {
-            Some("success") => "success",
-            Some("not_found") => "not_found",
-            _ => "error",
-        };
-
-        let nullifier = serde_json::from_value(res["nullifier"].clone())
-            .map_err(|e| format!("Failed to parse nullifier: {}", e))?;
-
-        Ok(crate::service_schema::NullifierResponseData { status, nullifier })
-    }
-
-    pub fn get_nullifier(
-        &self,
-        nullifier: String,
-        expected_state: String,
-    ) -> Result<crate::service_schema::NullifierResponse, String> {
-        let nullifier_request = crate::service_schema::NullifierRequest {
-            nullifier,
-            state: expected_state,
-        };
-
-        let url = self.path(Path::VerifyNullifier);
-        let result: Result<serde_json::Value, Error> = send(Method::GET, url, &nullifier_request);
-
-        match result {
-            Ok(json) => {
-                let status = match json["status"].as_str() {
-                    Some("success") => "success",
-                    Some("not_found") => "not_found",
-                    _ => "error",
-                };
-
-                let nullifier = serde_json::from_value(json["nullifier"].clone())
-                    .map_err(|e| format!("Failed to parse nullifier: {}", e))?;
-
-                let response_data =
-                    crate::service_schema::NullifierResponseData { status, nullifier };
-                Ok(crate::service_schema::NullifierResponse::Ok(
-                    response_data.nullifier,
-                ))
-            }
-            Err(Error::Service(e)) if e.contains("404 Not Found") => {
-                Ok(crate::service_schema::NullifierResponse::NotFound)
-            }
-            Err(_) => Ok(crate::service_schema::NullifierResponse::Error),
-        }
     }
 }
 

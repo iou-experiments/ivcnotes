@@ -186,10 +186,22 @@ pub struct IdentifierWrapper {
     pub identifier: UserIdentifier,
 }
 
-pub struct Contact<E: IVC> {
+pub struct Contact<E: ivcnotes::circuit::IVC> {
     #[serde(with = "crate::ark_serde")]
-    pub(crate) address: Address<E::Field>,
+    pub(crate) address: ivcnotes::Address<E::Field>,
     pub(crate) username: String,
     #[serde(with = "crate::ark_serde")]
-    pub(crate) public_key: PublicKey<E::TE>,
+    pub(crate) public_key: ivcnotes::PublicKey<E::TE>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SmtgWithPubkey<TE: TECurveConfig> {
+    #[serde(with = "ivcnotes::ark_serde")]
+    pubkey: ivcnotes::PublicKey<TE>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub struct SmtgWithAddress<F: PrimeField> {
+    #[serde(with = "ivcnotes::ark_serde")]
+    address: ivcnotes::Address<F>,
 }
