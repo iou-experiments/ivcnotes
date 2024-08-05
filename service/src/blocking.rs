@@ -12,21 +12,8 @@ use ivcnotes::Error;
 use ivcnotes::FWrap;
 use ivcnotes::{circuit::concrete::Concrete, service::Service};
 use reqwest::{Method, Url};
-use serde_derive::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
-
-#[derive(Serialize, Deserialize, Debug)]
-struct SmtgWithPubkey<TE: ark_ec::twisted_edwards::TECurveConfig> {
-    #[serde(with = "ivcnotes::ark_serde")]
-    pub pubkey: ivcnotes::PublicKey<TE>,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct SmtgWithAddress<F: ark_ff::PrimeField> {
-    #[serde(with = "ivcnotes::ark_serde")]
-    pub address: ivcnotes::Address<F>,
-}
 
 pub enum HttpScheme {
     Http,
@@ -102,7 +89,7 @@ impl BlockingHttpClient {
     fn path(&self, path: Path) -> Url {
         let mut url = self.base();
         let path = match path {
-            Path::Register => "register",
+            Path::Register => "create_user",
             Path::GetContact => "get_contact",
             Path::GetNotes => "get_notes",
             Path::SendNote => "send_note",
@@ -128,17 +115,20 @@ impl BlockingHttpClient {
 
         let address: ivcnotes::Address<ark_bn254::Fr> = match res.address {
             Some(ref address_str) => {
-                let smtg: SmtgWithAddress<ark_bn254::Fr> =
-                    serde_json::from_str(address_str).expect("no address");
-                smtg.address
+                let addy_byes = serde_json::from_str(address_str);
+                let address =
+                    ivcnotes::Address::from_bytes(addy_byes.expect("failed to deserialize"));
+                address.expect("failed to return address")
             }
             None => return Err("User address is None".into()),
         };
 
         let pubkey: ivcnotes::PublicKey<TE> = match res.pubkey {
             Some(ref pubkey_str) => {
-                let smtg: SmtgWithPubkey<TE> = serde_json::from_str(pubkey_str).expect("no pubkey");
-                smtg.pubkey
+                let pubkey_bytes = serde_json::from_str(pubkey_str);
+                let pubkey =
+                    ivcnotes::PublicKey::from_bytes(pubkey_bytes.expect("failed to deserialize"));
+                pubkey.expect("failed to return address")
             }
             None => return Err("User pubkey is None".into()),
         };
@@ -217,9 +207,6 @@ impl BlockingHttpClient {
 
 impl Service<Concrete> for BlockingHttpClient {
     fn register(&self, msg: &msg::request::Register<Concrete>) -> Result<(), Error> {
-        let smtg_address = SmtgWithAddress {
-            address: msg.address.clone(), // Clone the address field
-        };
         let address_bytes = msg.address.to_bytes();
         let pubkey_bytes = msg.address.to_bytes();
 
@@ -256,7 +243,9 @@ impl Service<Concrete> for BlockingHttpClient {
                 }),
             msg::request::GetContact::Address(address) => {
                 shared.contacts.get(address).cloned().or_else(|| {
-                    let smtg_address = SmtgWithAddress { address: *address };
+                    let address_bytes = address.to_bytes();
+                    let smtg_address =
+                        serde_json::to_string(&address_bytes).expect("failed to serialize address");
                     let address_json = serde_json::to_string(&smtg_address).unwrap();
                     self.get_user_from_db(UserIdentifier::Address(address_json))
                         .ok()
@@ -277,10 +266,9 @@ impl Service<Concrete> for BlockingHttpClient {
     }
 
     fn send_note(&self, msg: &msg::request::Note<Concrete>) -> Result<(), Error> {
-        let smtg_address = SmtgWithAddress {
-            address: msg.receiver,
-        };
-        let address_json = serde_json::to_string(&smtg_address).unwrap();
+        let address_bytes = msg.receiver.to_bytes();
+        let address_json =
+            serde_json::to_string(&address_bytes).expect("failed to serialize address");
 
         let send_and_transfer_json = NoteHistoryRequest {
             owner_username: None,

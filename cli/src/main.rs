@@ -29,6 +29,14 @@ struct CreateArgs {
     #[arg(short, long, default_value = "")]
     pass: String,
 }
+#[derive(Args)]
+struct RegisterArgs {
+    #[arg(short, long = "user")]
+    username: String,
+    #[arg(short, long)]
+    address: String,
+    public_key: String,
+}
 
 fn main() {
     let cli = Cli::parse();

@@ -7,7 +7,7 @@ rust-version.workspace = true
 version.workspace = true
 
 [[bin]]
-name = "service-http"
+name = "service"
 path = "src/main.rs"
 
 [dependencies]
