@@ -14,11 +14,30 @@ path = "src/main.rs"
 ivcnotes.workspace = true
 ark-ec.workspace = true
 ark-ff.workspace = true
-serde-derive.workspace = true
+
+ark-bn254.workspace = true
+ark-crypto-primitives.workspace = true
+ark-ed-on-bn254.workspace = true
+ark-groth16 = "0.4"
+ark-r1cs-std.workspace = true
+ark-relations.workspace = true
+ark-serialize.workspace = true
+ark-std.workspace = true
+arkeddsa.workspace = true
+
+rand.workspace = true
+rand_core.workspace = true
+
+aes.workspace = true
+cbc.workspace = true
+digest.workspace = true
+sha2.workspace = true
+
+bincode.workspace = true
+serde.workspace = true
+serde_derive.workspace = true
 
 reqwest = {version = "0.12.5", features = ["blocking"]}
 mongodb = "3.0.1"
 bson = "2.11.0"
-serde = "1.0"
-serde_derive = "1.0"
 serde_json = "1.0"

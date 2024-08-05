@@ -19,10 +19,10 @@ use serde_derive::{Deserialize, Serialize};
 
 pub struct Contact<E: IVC> {
     #[serde(with = "crate::ark_serde")]
-    pub(crate) address: Address<E::Field>,
-    pub(crate) username: String,
+    pub address: Address<E::Field>,
+    pub username: String,
     #[serde(with = "crate::ark_serde")]
-    pub(crate) public_key: PublicKey<E::TE>,
+    pub public_key: PublicKey<E::TE>,
 }
 
 impl<E: IVC> PartialEq for Contact<E> {

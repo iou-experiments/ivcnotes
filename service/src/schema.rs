@@ -185,23 +185,3 @@ pub struct NoteHistoryResponse {
 pub struct IdentifierWrapper {
     pub identifier: UserIdentifier,
 }
-
-pub struct Contact<E: ivcnotes::circuit::IVC> {
-    #[serde(with = "crate::ark_serde")]
-    pub address: ivcnotes::Address<E::Field>,
-    pub username: String,
-    #[serde(with = "crate::ark_serde")]
-    pub public_key: ivcnotes::PublicKey<E::TE>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SmtgWithPubkey<TE: ark_ec::twisted_edwards::TECurveConfig> {
-    #[serde(with = "ivcnotes::ark_serde")]
-    pub pubkey: ivcnotes::PublicKey<TE>,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct SmtgWithAddress<F: ark_ff::PrimeField> {
-    #[serde(with = "ivcnotes::ark_serde")]
-    pub address: ivcnotes::Address<F>,
-}

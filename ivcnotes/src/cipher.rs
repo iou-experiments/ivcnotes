@@ -34,7 +34,7 @@ pub(crate) fn decrypt(shared_key: &[u8; 32], msg: &[u8]) -> Vec<u8> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EncryptedData {
-    pub(crate) data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 impl From<Vec<u8>> for EncryptedData {
