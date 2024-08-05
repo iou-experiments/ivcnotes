@@ -12,6 +12,9 @@ path = "src/main.rs"
 
 [dependencies]
 ivcnotes.workspace = true
+ark-ec.workspace = true
+ark-ff.workspace = true
+serde-derive.workspace = true
 
 reqwest = {version = "0.12.5", features = ["blocking"]}
 mongodb = "3.0.1"
