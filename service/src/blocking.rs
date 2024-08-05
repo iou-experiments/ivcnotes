@@ -284,7 +284,7 @@ impl Service<Concrete> for BlockingHttpClient {
 
         let send_and_transfer_json = NoteHistoryRequest {
             owner_username: None,
-            recipient_username: msg.username.clone(),
+            recipient_username: "user0".to_owned(),
             note_history: SaveNoteHistoryRequestSchema {
                 data: msg.note_history.encrypted.data.clone(),
                 address: address_json,
@@ -301,7 +301,7 @@ impl Service<Concrete> for BlockingHttpClient {
         msg: &msg::request::GetNotes<Field>,
     ) -> Result<msg::response::Notes<Concrete>, Error> {
         let username_request = UsernameRequest {
-            username: msg.username.clone(),
+            username: "user0".to_owned(),
         };
 
         let url = self.path(Path::GetNoteHistoryForUser);
@@ -311,7 +311,7 @@ impl Service<Concrete> for BlockingHttpClient {
             note_history
                 .into_iter()
                 .map(|nh| {
-                    self.convert_note_history_to_encrypted_note_history(nh, msg.username.clone())
+                    self.convert_note_history_to_encrypted_note_history(nh, "user0".to_owned())
                 })
                 .collect();
 
