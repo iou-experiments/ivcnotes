@@ -7,11 +7,11 @@ use crate::schema::{
 
 use ark_bn254;
 type TE = ark_ed_on_bn254::EdwardsConfig;
+use ivcnotes::circuit::concrete::Concrete;
 use ivcnotes::circuit::IVC;
 use ivcnotes::service::msg;
 use ivcnotes::Error;
 use ivcnotes::FWrap;
-use ivcnotes::{circuit::concrete::Concrete, service::Service};
 use reqwest::{Method, Url};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -20,12 +20,7 @@ pub enum HttpScheme {
     Http,
     Https,
 }
-
 enum Path {
-    Register,
-    GetContact,
-    SendNote,
-    GetNotes,
     CreateUser,
     GetUser,
     CreateAndTransferNoteHistory,
@@ -90,10 +85,6 @@ impl BlockingHttpClient {
     fn path(&self, path: Path) -> Url {
         let mut url = self.base();
         let path = match path {
-            Path::Register => "create_user",
-            Path::GetContact => "get_contact",
-            Path::GetNotes => "get_notes",
-            Path::SendNote => "send_note",
             Path::CreateUser => "create_user",
             Path::GetUser => "get_user",
             Path::CreateAndTransferNoteHistory => "create_and_transfer_note_history",
@@ -105,40 +96,28 @@ impl BlockingHttpClient {
         url
     }
 
-    fn get_user_from_db(
+    fn convert_note_history_to_encrypted_note_history(
         &self,
-        identifier: UserIdentifier,
-    ) -> Result<ivcnotes::wallet::Contact<Concrete>, String> {
+        nh: NoteHistorySaved,
+        username: String,
+        // ) -> ivcnotes::note::EncryptedNoteHistory<Concrete> {
+    ) {
+        let contact = self
+            .get_user_from_db(UserIdentifier::Username(username))
+            .expect("couldn't get contact");
+
+        // ivcnotes::note::EncryptedNoteHistory {
+        //     sender: contact,
+        //     encrypted: ivcnotes::cipher::EncryptedData { data: nh.data },
+        // }
+    }
+
+    pub fn get_user_from_db(&self, identifier: UserIdentifier) -> Result<User, String> {
         let url = self.path(Path::GetUser);
         let wrapper = IdentifierWrapper { identifier };
         let res: User =
             send(Method::GET, url, &wrapper).map_err(|e| format!("Failed to get user: {}", e))?;
-
-        let address: ivcnotes::Address<ark_bn254::Fr> = match res.address {
-            Some(ref address_str) => {
-                let addy_byes = serde_json::from_str(address_str);
-                let address =
-                    ivcnotes::Address::from_bytes(addy_byes.expect("failed to deserialize"));
-                address.expect("failed to return address")
-            }
-            None => return Err("User address is None".into()),
-        };
-
-        let pubkey: ivcnotes::PublicKey<TE> = match res.pubkey {
-            Some(ref pubkey_str) => {
-                let pubkey_bytes = serde_json::from_str(pubkey_str);
-                let pubkey =
-                    ivcnotes::PublicKey::from_bytes(pubkey_bytes.expect("failed to deserialize"));
-                pubkey.expect("failed to return address")
-            }
-            None => return Err("User pubkey is None".into()),
-        };
-
-        Ok(ivcnotes::wallet::Contact {
-            public_key: pubkey,
-            address,
-            username: res.username.ok_or("Username is None")?,
-        })
+        Ok(res)
     }
 
     pub fn store_nullifier(
@@ -204,17 +183,12 @@ impl BlockingHttpClient {
             Err(_) => Ok(NullifierResponse::Error),
         }
     }
-    pub fn register(&self, msg: UserRegister) -> Result<(), Error> {
-        // let address_bytes = msg.address.to_bytes();
-        // let pubkey_bytes = msg.address.to_bytes();
 
+    pub fn register(&self, msg: UserRegister) -> Result<User, String> {
         let create_user_schema = CreateUserSchema {
             username: msg.username.clone(),
             address: msg.address.clone(),
             pubkey: msg.public_key.clone(),
-            // todo: round trip test needed
-            // address: serde_json::to_string(&address_bytes).expect("failed to serialize address"),
-            // pubkey: serde_json::to_string(&pubkey_bytes).expect("failed to serialize pubkey"),
             nonce: String::new(),
             messages: Vec::new(),
             notes: Vec::new(),
@@ -222,71 +196,12 @@ impl BlockingHttpClient {
         };
 
         let url = self.path(Path::CreateUser);
-        send(Method::POST, url, &create_user_schema)
+        let user: User = send(Method::POST, url, &create_user_schema)
+            .map_err(|e| format!("Failed to create user: {}", e))?;
+
+        Ok(user)
     }
-}
-
-impl Service<Concrete> for BlockingHttpClient {
-    fn register(&self, msg: &msg::request::Register<Concrete>) -> Result<(), Error> {
-        let address_bytes = msg.address.to_bytes();
-        let pubkey_bytes = msg.address.to_bytes();
-
-        let create_user_schema = CreateUserSchema {
-            username: msg.username.clone(),
-            // todo: round trip test needed
-            address: serde_json::to_string(&address_bytes).expect("failed to serialize address"),
-            pubkey: serde_json::to_string(&pubkey_bytes).expect("failed to serialize pubkey"),
-            nonce: String::new(),
-            messages: Vec::new(),
-            notes: Vec::new(),
-            has_double_spent: false,
-        };
-
-        let url = self.path(Path::CreateUser);
-        send(Method::POST, url, &create_user_schema)
-    }
-
-    fn get_contact(
-        &self,
-        msg: &msg::request::GetContact<Field>,
-    ) -> Result<msg::response::Contact<Concrete>, Error> {
-        let mut shared = self.shared.borrow_mut();
-
-        let contact = match msg {
-            msg::request::GetContact::Username(username) => shared
-                .contacts
-                .values()
-                .find(|contact| contact.username == *username)
-                .cloned()
-                .or_else(|| {
-                    self.get_user_from_db(UserIdentifier::Username(username.clone()))
-                        .ok()
-                }),
-            msg::request::GetContact::Address(address) => {
-                shared.contacts.get(address).cloned().or_else(|| {
-                    let address_bytes = address.to_bytes();
-                    let smtg_address =
-                        serde_json::to_string(&address_bytes).expect("failed to serialize address");
-                    let address_json = serde_json::to_string(&smtg_address).unwrap();
-                    self.get_user_from_db(UserIdentifier::Address(address_json))
-                        .ok()
-                })
-            }
-        };
-
-        match contact {
-            Some(contact) => {
-                shared
-                    .contacts
-                    .entry(contact.address)
-                    .or_insert_with(|| contact.clone());
-                Ok(contact)
-            }
-            None => Err(Error::Service("broken".to_owned())),
-        }
-    }
-
-    fn send_note(&self, msg: &msg::request::Note<Concrete>) -> Result<(), Error> {
+    pub fn send_note(&self, msg: &msg::request::Note<Concrete>) -> Result<(), Error> {
         let address_bytes = msg.receiver.to_bytes();
         let address_json =
             serde_json::to_string(&address_bytes).expect("failed to serialize address");
@@ -305,44 +220,29 @@ impl Service<Concrete> for BlockingHttpClient {
         send(Method::POST, url, &send_and_transfer_json)
     }
 
-    fn get_notes(
+    pub fn get_notes(
         &self,
         msg: &msg::request::GetNotes<Field>,
-    ) -> Result<msg::response::Notes<Concrete>, Error> {
+        // ) -> Result<msg::response::Notes<Concrete>, Error> {
+    ) {
         let username_request = UsernameRequest {
             username: "user0".to_owned(),
         };
 
         let url = self.path(Path::GetNoteHistoryForUser);
-        let note_history: Vec<NoteHistorySaved> = send(Method::GET, url, &username_request)?;
+        let note_history: Vec<NoteHistorySaved> =
+            send(Method::GET, url, &username_request).expect("a");
 
-        let encrypted_note_history: Vec<ivcnotes::note::EncryptedNoteHistory<Concrete>> =
-            note_history
-                .into_iter()
-                .map(|nh| {
-                    self.convert_note_history_to_encrypted_note_history(nh, "user0".to_owned())
-                })
-                .collect();
+        // let encrypted_note_history: Vec<ivcnotes::note::EncryptedNoteHistory<Concrete>> =
+        //     note_history
+        //         .into_iter()
+        //         .map(|nh| {
+        //             self.convert_note_history_to_encrypted_note_history(nh, "user0".to_owned())
+        //         })
+        //         .collect();
 
-        Ok(msg::response::Notes {
-            notes: encrypted_note_history,
-        })
-    }
-}
-
-impl BlockingHttpClient {
-    fn convert_note_history_to_encrypted_note_history(
-        &self,
-        nh: NoteHistorySaved,
-        username: String,
-    ) -> ivcnotes::note::EncryptedNoteHistory<Concrete> {
-        let contact = self
-            .get_user_from_db(UserIdentifier::Username(username))
-            .expect("couldn't get contact");
-
-        ivcnotes::note::EncryptedNoteHistory {
-            sender: contact,
-            encrypted: ivcnotes::cipher::EncryptedData { data: nh.data },
-        }
+        // Ok(msg::response::Notes {
+        //     notes: encrypted_note_history,
+        // })
     }
 }
