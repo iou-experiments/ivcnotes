@@ -74,7 +74,23 @@ impl Creds {
 
         let user = client.get_user_from_db(service::schema::UserIdentifier::Username(username))?;
 
-        println!("Successfully registered and retrieved user: {:#?}", user);
+        println!("Successfully retrieved user: {:#?}", user);
+
+        Ok(())
+    }
+
+    pub(crate) fn verify_nullifier(
+        nullifier: String,
+        state: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let client = BlockingHttpClient::new(
+            HttpScheme::Http,
+            "167.172.25.99", // Replace with your actual host
+            Some(80),        // Replace with your actual port
+        );
+        let nullifier_res = client.get_nullifier(nullifier, state)?;
+
+        println!("Successfully retrieved nullifier: {:#?}", nullifier_res);
 
         Ok(())
     }

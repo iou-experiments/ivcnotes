@@ -1,8 +1,7 @@
 use crate::schema::UserRegister;
 use crate::schema::{
     CreateUserSchema, IdentifierWrapper, NoteHistoryRequest, NoteHistorySaved, NoteNullifierSchema,
-    NullifierRequest, NullifierResponse, NullifierResponseData, SaveNoteHistoryRequestSchema, User,
-    UserIdentifier,
+    NullifierRequest, NullifierResponseData, SaveNoteHistoryRequestSchema, User, UserIdentifier,
 };
 
 use ivcnotes::circuit::concrete::Concrete;
@@ -57,6 +56,7 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
         .body(json)
         .send()
         .map_err(|e| Error::Service(format!("Failed to send request: {}", e)))?;
+    println!("{:#?}", res);
     serde_json::from_reader(res)
         .map_err(|e| Error::Service(format!("Failed to convert response body: {}", e)))
 }
@@ -152,33 +152,32 @@ impl BlockingHttpClient {
         &self,
         nullifier: String,
         expected_state: String,
-    ) -> Result<NullifierResponse, String> {
+    ) -> Result<String, String> {
         let nullifier_request = NullifierRequest {
             nullifier,
             state: expected_state,
         };
 
         let url = self.path(Path::VerifyNullifier);
-        let result: Result<serde_json::Value, Error> = send(Method::GET, url, &nullifier_request);
 
-        match result {
+        match send::<_, serde_json::Value>(Method::GET, url, &nullifier_request) {
             Ok(json) => {
-                let status = match json["status"].as_str() {
-                    Some("success") => "success",
-                    Some("not_found") => "not_found",
-                    _ => "error",
-                };
+                println!("Response: {:#?}", json);
 
-                let nullifier = serde_json::from_value(json["nullifier"].clone())
-                    .map_err(|e| format!("Failed to parse nullifier: {}", e))?;
-
-                let response_data = NullifierResponseData { status, nullifier };
-                Ok(NullifierResponse::Ok(response_data.nullifier))
+                if json.get("Ok").is_some() {
+                    // This is the case where we have a successful response
+                    Ok("Warning: Betrayal detected, sender was flagged".to_string())
+                } else if json.as_str() == Some("Error") {
+                    // This is the case where we have an "Error" string
+                    Ok("Nullifier verified, no betrayal detected".to_string())
+                } else {
+                    Err("Unexpected response format".to_string())
+                }
             }
             Err(Error::Service(e)) if e.contains("404 Not Found") => {
-                Ok(NullifierResponse::NotFound)
+                Ok("Nullifier not found".to_string())
             }
-            Err(_) => Ok(NullifierResponse::Error),
+            Err(_) => Err("An error occurred while verifying the nullifier".to_string()),
         }
     }
 

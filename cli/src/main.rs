@@ -20,6 +20,7 @@ enum Commands {
     Register(RegisterArgs),
     GetUser(GetUserArgs),
     GetNotes(GetUserArgs),
+    VerifyNullifier(VerifyNullifierArgs),
     Info,
     Reset,
 }
@@ -27,6 +28,12 @@ enum Commands {
 #[derive(Args)]
 struct GetUserArgs {
     username: String,
+}
+
+#[derive(Args)]
+struct VerifyNullifierArgs {
+    nullifier: String,
+    state: String,
 }
 
 #[derive(Args)]
@@ -57,6 +64,11 @@ fn main() {
         Commands::GetNotes(args) => {
             if let Err(e) = Creds::get_notes(args.username.clone()) {
                 eprintln!("Failed to get notes: {:?}", e);
+            }
+        }
+        Commands::VerifyNullifier(args) => {
+            if let Err(e) = Creds::verify_nullifier(args.nullifier.clone(), args.state.clone()) {
+                eprintln!("Failed to verify Nullifier: {:?}", e);
             }
         }
         Commands::Register(args) => {
