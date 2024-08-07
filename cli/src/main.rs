@@ -18,8 +18,14 @@ struct Cli {
 enum Commands {
     Create(CreateArgs),
     Register(RegisterArgs),
+    GetUser(GetUserArgs),
     Info,
     Reset,
+}
+
+#[derive(Args)]
+struct GetUserArgs {
+    username: String,
 }
 
 #[derive(Args)]
@@ -42,6 +48,11 @@ fn main() {
     match &cli.command {
         Commands::Create(args) => Creds::generate(args).unwrap(),
         Commands::Info => FileMan::list_accounts(),
+        Commands::GetUser(args) => {
+            if let Err(e) = Creds::get_user(args.username.clone()) {
+                eprintln!("Failed to get user: {:?}", e);
+            }
+        }
         Commands::Register(args) => {
             if let Err(e) = Creds::register(args.username.clone(), args.address.clone()) {
                 eprintln!("Failed to register user: {:?}", e);

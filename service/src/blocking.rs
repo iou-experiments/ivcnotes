@@ -96,7 +96,7 @@ impl BlockingHttpClient {
         url
     }
 
-    fn convert_note_history_to_encrypted_note_history(
+    pub fn convert_note_history_to_encrypted_note_history(
         &self,
         nh: NoteHistorySaved,
         username: String,
@@ -231,7 +231,7 @@ impl BlockingHttpClient {
 
         let url = self.path(Path::GetNoteHistoryForUser);
         let note_history: Vec<NoteHistorySaved> =
-            send(Method::GET, url, &username_request).expect("a");
+            send(Method::GET, url, &username_request).expect("failed to get note history");
 
         // let encrypted_note_history: Vec<ivcnotes::note::EncryptedNoteHistory<Concrete>> =
         //     note_history

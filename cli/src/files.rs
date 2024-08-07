@@ -65,6 +65,20 @@ impl Creds {
         Ok(())
     }
 
+    pub(crate) fn get_user(username: String) -> Result<(), Box<dyn std::error::Error>> {
+        let client = BlockingHttpClient::new(
+            HttpScheme::Http,
+            "167.172.25.99", // Replace with your actual host
+            Some(80),        // Replace with your actual port
+        );
+
+        let user = client.get_user_from_db(service::schema::UserIdentifier::Username(username))?;
+
+        println!("Successfully registered and retrieved user: {:#?}", user);
+
+        Ok(())
+    }
+
     pub(crate) fn generate(args: &CreateArgs) -> std::io::Result<()> {
         println!("{}", "> Generating new key...".blue());
         let auth = Auth::<Concrete>::generate(&POSEIDON_CFG, &mut OsRng).unwrap();
