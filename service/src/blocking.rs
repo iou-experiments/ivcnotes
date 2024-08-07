@@ -5,15 +5,11 @@ use crate::schema::{
     UserIdentifier,
 };
 
-use ark_bn254;
 use ivcnotes::circuit::concrete::Concrete;
-use ivcnotes::circuit::IVC;
 use ivcnotes::service::msg;
 use ivcnotes::Error;
 use ivcnotes::FWrap;
 use reqwest::{Method, Url};
-use std::cell::RefCell;
-use std::collections::HashMap;
 
 pub enum HttpScheme {
     Http,
@@ -44,13 +40,6 @@ pub struct BlockingHttpClient {
     scheme: HttpScheme,
     host: String,
     port: Option<u16>,
-    shared: RefCell<SharedState>,
-}
-
-type Field = <Concrete as IVC>::Field;
-
-struct SharedState {
-    contacts: HashMap<ivcnotes::Address<ark_bn254::Fr>, ivcnotes::wallet::Contact<Concrete>>,
 }
 
 fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
@@ -68,9 +57,6 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
         .body(json)
         .send()
         .map_err(|e| Error::Service(format!("Failed to send request: {}", e)))?;
-    // serde_json::from_reader(res)
-    //     .map_err(|e| Error::Service(format!("Failed to convert response body: {}", e)))
-    println!("res, {:#?}", res);
     serde_json::from_reader(res)
         .map_err(|e| Error::Service(format!("Failed to convert response body: {}", e)))
 }
@@ -81,9 +67,6 @@ impl BlockingHttpClient {
             scheme,
             host: host.to_string(),
             port,
-            shared: RefCell::new(SharedState {
-                contacts: HashMap::new(),
-            }),
         }
     }
 
@@ -134,6 +117,7 @@ impl BlockingHttpClient {
         Ok(res)
     }
 
+    //todo
     pub fn store_nullifier(
         &self,
         nullifier: String,
@@ -215,6 +199,8 @@ impl BlockingHttpClient {
 
         Ok(user)
     }
+
+    //todo
     pub fn send_note(&self, msg: &msg::request::Note<Concrete>) -> Result<(), Error> {
         let address_bytes = msg.receiver.to_bytes();
         let address_json =
