@@ -2,11 +2,10 @@ use crate::schema::UserRegister;
 use crate::schema::{
     CreateUserSchema, IdentifierWrapper, NoteHistoryRequest, NoteHistorySaved, NoteNullifierSchema,
     NullifierRequest, NullifierResponse, NullifierResponseData, SaveNoteHistoryRequestSchema, User,
-    UserIdentifier, UsernameRequest,
+    UserIdentifier,
 };
 
 use ark_bn254;
-type TE = ark_ed_on_bn254::EdwardsConfig;
 use ivcnotes::circuit::concrete::Concrete;
 use ivcnotes::circuit::IVC;
 use ivcnotes::service::msg;
@@ -27,6 +26,18 @@ enum Path {
     GetNoteHistoryForUser,
     StoreNullifier,
     VerifyNullifier,
+}
+use serde_derive::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EncryptedNoteHistory {
+    pub sender: User,
+    pub encrypted: ivcnotes::cipher::EncryptedData,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Notes {
+    pub notes: Vec<EncryptedNoteHistory>,
 }
 
 pub struct BlockingHttpClient {
@@ -49,6 +60,7 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
 ) -> Result<Res, Error> {
     let client = reqwest::blocking::Client::new();
     let json = serde_json::to_string(&req).unwrap();
+    println!("{:#?}", json);
     let res = client
         .request(method, url)
         .header("Accept", "*/*")
@@ -56,6 +68,9 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
         .body(json)
         .send()
         .map_err(|e| Error::Service(format!("Failed to send request: {}", e)))?;
+    // serde_json::from_reader(res)
+    //     .map_err(|e| Error::Service(format!("Failed to convert response body: {}", e)))
+    println!("res, {:#?}", res);
     serde_json::from_reader(res)
         .map_err(|e| Error::Service(format!("Failed to convert response body: {}", e)))
 }
@@ -100,16 +115,15 @@ impl BlockingHttpClient {
         &self,
         nh: NoteHistorySaved,
         username: String,
-        // ) -> ivcnotes::note::EncryptedNoteHistory<Concrete> {
-    ) {
+    ) -> EncryptedNoteHistory {
         let contact = self
             .get_user_from_db(UserIdentifier::Username(username))
             .expect("couldn't get contact");
 
-        // ivcnotes::note::EncryptedNoteHistory {
-        //     sender: contact,
-        //     encrypted: ivcnotes::cipher::EncryptedData { data: nh.data },
-        // }
+        EncryptedNoteHistory {
+            sender: contact,
+            encrypted: ivcnotes::cipher::EncryptedData { data: nh.data },
+        }
     }
 
     pub fn get_user_from_db(&self, identifier: UserIdentifier) -> Result<User, String> {
@@ -220,29 +234,22 @@ impl BlockingHttpClient {
         send(Method::POST, url, &send_and_transfer_json)
     }
 
-    pub fn get_notes(
-        &self,
-        msg: &msg::request::GetNotes<Field>,
-        // ) -> Result<msg::response::Notes<Concrete>, Error> {
-    ) {
-        let username_request = UsernameRequest {
-            username: "user0".to_owned(),
+    pub fn get_notes(&self, username: String) -> Result<Notes, String> {
+        let username_request = crate::schema::UsernameRequest {
+            username: username.clone(),
         };
 
         let url = self.path(Path::GetNoteHistoryForUser);
-        let note_history: Vec<NoteHistorySaved> =
-            send(Method::GET, url, &username_request).expect("failed to get note history");
+        let note_history: Vec<NoteHistorySaved> = send(Method::GET, url, &username_request)
+            .map_err(|e| format!("Failed to get notes: {}", e))?;
 
-        // let encrypted_note_history: Vec<ivcnotes::note::EncryptedNoteHistory<Concrete>> =
-        //     note_history
-        //         .into_iter()
-        //         .map(|nh| {
-        //             self.convert_note_history_to_encrypted_note_history(nh, "user0".to_owned())
-        //         })
-        //         .collect();
+        let encrypted_note_history: Vec<EncryptedNoteHistory> = note_history
+            .into_iter()
+            .map(|nh| self.convert_note_history_to_encrypted_note_history(nh, "user0".to_owned()))
+            .collect();
 
-        // Ok(msg::response::Notes {
-        //     notes: encrypted_note_history,
-        // })
+        Ok(Notes {
+            notes: encrypted_note_history,
+        })
     }
 }

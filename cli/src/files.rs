@@ -79,6 +79,19 @@ impl Creds {
         Ok(())
     }
 
+    pub(crate) fn get_notes(username: String) -> Result<(), Box<dyn std::error::Error>> {
+        let client = BlockingHttpClient::new(
+            HttpScheme::Http,
+            "167.172.25.99", // Replace with your actual host
+            Some(80),        // Replace with your actual port
+        );
+
+        let notes = client.get_notes(username)?;
+
+        println!("Successfully retrieved notes for user: {:#?}", notes);
+        Ok(())
+    }
+
     pub(crate) fn generate(args: &CreateArgs) -> std::io::Result<()> {
         println!("{}", "> Generating new key...".blue());
         let auth = Auth::<Concrete>::generate(&POSEIDON_CFG, &mut OsRng).unwrap();

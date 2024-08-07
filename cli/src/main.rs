@@ -19,6 +19,7 @@ enum Commands {
     Create(CreateArgs),
     Register(RegisterArgs),
     GetUser(GetUserArgs),
+    GetNotes(GetUserArgs),
     Info,
     Reset,
 }
@@ -51,6 +52,11 @@ fn main() {
         Commands::GetUser(args) => {
             if let Err(e) = Creds::get_user(args.username.clone()) {
                 eprintln!("Failed to get user: {:?}", e);
+            }
+        }
+        Commands::GetNotes(args) => {
+            if let Err(e) = Creds::get_notes(args.username.clone()) {
+                eprintln!("Failed to get notes: {:?}", e);
             }
         }
         Commands::Register(args) => {
