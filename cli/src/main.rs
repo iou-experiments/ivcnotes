@@ -35,7 +35,6 @@ struct RegisterArgs {
     username: String,
     #[arg(short, long)]
     address: String,
-    public_key: String,
 }
 
 fn main() {
