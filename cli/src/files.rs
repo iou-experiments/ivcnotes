@@ -9,6 +9,7 @@ use ivcnotes::id::Auth;
 use ivcnotes::FWrap;
 use serde_derive::{Deserialize, Serialize};
 use service::blocking::{BlockingHttpClient, HttpScheme};
+use service::schema::UserRegister;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
@@ -52,17 +53,15 @@ impl Creds {
             Some(80),        // Replace with your actual port
         );
 
-        let address = ivcnotes::Address::<Concrete>::from_str(&address)
-            .map_err(|_| "Failed to parse address")?;
-
-        let register_msg = ivcnotes::service::msg::request::Register {
+        let register_msg = UserRegister {
             username: username.clone(),
             address,
+            public_key: "pub_key".to_owned(),
         };
 
-        client.register(register_msg);
+        let user = client.register(register_msg);
 
-        println!("Successfully registered user: {}", username);
+        println!("Successfully registered user: {:#?}", user.unwrap());
         Ok(())
     }
 

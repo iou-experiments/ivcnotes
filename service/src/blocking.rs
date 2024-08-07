@@ -1,3 +1,4 @@
+use crate::schema::UserRegister;
 use crate::schema::{
     CreateUserSchema, IdentifierWrapper, NoteHistoryRequest, NoteHistorySaved, NoteNullifierSchema,
     NullifierRequest, NullifierResponse, NullifierResponseData, SaveNoteHistoryRequestSchema, User,
@@ -202,6 +203,26 @@ impl BlockingHttpClient {
             }
             Err(_) => Ok(NullifierResponse::Error),
         }
+    }
+    pub fn register(&self, msg: UserRegister) -> Result<(), Error> {
+        // let address_bytes = msg.address.to_bytes();
+        // let pubkey_bytes = msg.address.to_bytes();
+
+        let create_user_schema = CreateUserSchema {
+            username: msg.username.clone(),
+            address: msg.address.clone(),
+            pubkey: msg.public_key.clone(),
+            // todo: round trip test needed
+            // address: serde_json::to_string(&address_bytes).expect("failed to serialize address"),
+            // pubkey: serde_json::to_string(&pubkey_bytes).expect("failed to serialize pubkey"),
+            nonce: String::new(),
+            messages: Vec::new(),
+            notes: Vec::new(),
+            has_double_spent: false,
+        };
+
+        let url = self.path(Path::CreateUser);
+        send(Method::POST, url, &create_user_schema)
     }
 }
 

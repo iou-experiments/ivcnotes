@@ -36,6 +36,12 @@ pub enum UserIdentifier {
     Address(String),
 }
 
+pub struct UserRegister {
+    pub username: String,
+    pub public_key: String,
+    pub address: String,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UsernameRequest {
     pub username: String,
