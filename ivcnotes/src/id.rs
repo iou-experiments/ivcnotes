@@ -13,8 +13,8 @@ use sha2::Digest;
 pub struct Auth<E: IVC> {
     h: PoseidonConfig<E::Field>,
     secret: [u8; 32],
-    address: Address<E::Field>,
-    public_key: PublicKey<E::TE>,
+    pub address: Address<E::Field>,
+    pub public_key: PublicKey<E::TE>,
 }
 
 fn nullifier_key<F: PrimeField>(secret: &[u8; 32]) -> NullifierKey<F> {

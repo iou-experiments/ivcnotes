@@ -23,6 +23,7 @@ enum Commands {
     VerifyNullifier(VerifyNullifierArgs),
     Info,
     Reset,
+    RegisterAuto,
 }
 
 #[derive(Args)]
@@ -49,6 +50,8 @@ struct RegisterArgs {
     username: String,
     #[arg(short, long)]
     address: String,
+    #[arg(short, long)]
+    pubkey: String,
 }
 
 fn main() {
@@ -56,6 +59,10 @@ fn main() {
     match &cli.command {
         Commands::Create(args) => Creds::generate(args).unwrap(),
         Commands::Info => FileMan::list_accounts(),
+        Commands::RegisterAuto => Creds::register_auto().unwrap(),
+        // TODO: ISSUE & TRANSFER NOTE includes IVCNOTES & SERVICE
+        // TODO: SPLIT & TRANSFER NOTE includes IVCNOTES & SERVICE
+        // SPLIT TODO: store nullifier
         Commands::GetUser(args) => {
             if let Err(e) = Creds::get_user(args.username.clone()) {
                 eprintln!("Failed to get user: {:?}", e);

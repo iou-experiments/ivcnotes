@@ -237,7 +237,6 @@ impl<E: IVC> Wallet<E> {
 
         // send the new history to the receiver
         self.send_note(&receiver, &note_history)?;
-
         // TODO: save the note as liability
 
         Ok(())
