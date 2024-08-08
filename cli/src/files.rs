@@ -37,40 +37,48 @@ pub(crate) struct Creds {
     pub(crate) username: String,
     pub(crate) address: String,
     pub(crate) auth: Vec<u8>,
-    // to do, we need pubkey?
+    pub(crate) pubkey: String,
 }
 
 use crate::CreateArgs;
 
 impl Creds {
-    pub(crate) fn register(
-        username: String,
-        address: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = BlockingHttpClient::new(
-            HttpScheme::Http,
-            "167.172.25.99", // Replace with your actual host
-            Some(80),        // Replace with your actual port
-        );
+    // pub(crate) fn register(
+    //     username: String,
+    //     address: String,
+    // ) -> Result<(), Box<dyn std::error::Error>> {
+    //     let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
 
+    //     let register_msg = UserRegister {
+    //         username: username.clone(),
+    //         address,
+    //         public_key: "pub_key".to_owned(), // How do we get this? TODO
+    //     };
+
+    //     let user = client.register(register_msg);
+
+    //     println!("Successfully registered user: {:#?}", user.unwrap());
+    //     Ok(())
+    // }
+
+    pub(crate) fn register() -> Result<(), Box<dyn std::error::Error>> {
+        // Read credentials from file
+        let creds = FileMan::_read_creds()?;
+
+        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
         let register_msg = UserRegister {
-            username: username.clone(),
-            address,
-            public_key: "pub_key".to_owned(),
+            username: creds.username,
+            address: creds.address,
+            public_key: creds.pubkey,
         };
 
-        let user = client.register(register_msg);
-
-        println!("Successfully registered user: {:#?}", user.unwrap());
+        let _ = client.register(register_msg);
+        println!("Successfully registered user");
         Ok(())
     }
 
     pub(crate) fn get_user(username: String) -> Result<(), Box<dyn std::error::Error>> {
-        let client = BlockingHttpClient::new(
-            HttpScheme::Http,
-            "167.172.25.99", // Replace with your actual host
-            Some(80),        // Replace with your actual port
-        );
+        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
 
         let user = client.get_user_from_db(service::schema::UserIdentifier::Username(username))?;
 
@@ -83,11 +91,7 @@ impl Creds {
         nullifier: String,
         state: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = BlockingHttpClient::new(
-            HttpScheme::Http,
-            "167.172.25.99", // Replace with your actual host
-            Some(80),        // Replace with your actual port
-        );
+        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
         let nullifier_res = client.get_nullifier(nullifier, state)?;
 
         println!("Successfully retrieved nullifier: {:#?}", nullifier_res);
@@ -96,11 +100,7 @@ impl Creds {
     }
 
     pub(crate) fn get_notes(username: String) -> Result<(), Box<dyn std::error::Error>> {
-        let client = BlockingHttpClient::new(
-            HttpScheme::Http,
-            "167.172.25.99", // Replace with your actual host
-            Some(80),        // Replace with your actual port
-        );
+        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
 
         let notes = client.get_notes(username)?;
 
@@ -112,18 +112,26 @@ impl Creds {
         println!("{}", "> Generating new key...".blue());
         let auth = Auth::<Concrete>::generate(&POSEIDON_CFG, &mut OsRng).unwrap();
         let address = auth.address().short_hex();
-        println!(
-            "{} {}",
-            "> Address:".blue(),
-            auth.address().short_hex().yellow()
-        );
+        let pubkey = auth.public_key.clone();
 
+        let smtg_pubkey = ivcnotes::service::SmtgWithPubkey { pubkey };
+        let pubkey_json = serde_json::to_string(&smtg_pubkey).unwrap();
+        println!(
+            "{} {} {} {} {} {}",
+            "> Address:".blue(),
+            auth.address().short_hex().yellow(),
+            "> Pubkey:".blue(),
+            pubkey_json.clone(),
+            "> Username:".blue(),
+            args.username.clone(),
+        );
         let auth = auth.to_bytes();
         let auth = encrypt(&auth, args.pass.as_bytes());
         let creds = Creds {
             username: args.username.clone(),
             auth,
             address: address.clone(),
+            pubkey: pubkey_json,
         };
         FileMan::write_creds(&creds)?;
         FileMan::update_current_address(&address)?;

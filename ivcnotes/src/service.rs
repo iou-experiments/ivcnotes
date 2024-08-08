@@ -9,6 +9,12 @@ pub struct Comm<E: IVC> {
     pub(crate) service: Box<dyn Service<E>>,
 }
 
+#[derive(serde_derive::Serialize, serde_derive::Deserialize, Debug)]
+pub struct SmtgWithPubkey<TE: ark_ec::twisted_edwards::TECurveConfig> {
+    #[serde(with = "crate::ark_serde")]
+    pub pubkey: crate::PublicKey<TE>,
+}
+
 pub trait Service<E: IVC> {
     fn register(&self, msg: &msg::request::Register<E>) -> Result<(), crate::Error>;
     fn get_contact(
