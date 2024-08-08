@@ -6,10 +6,6 @@ license.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
-[[bin]]
-name = "service-http"
-path = "src/main.rs"
-
 [dependencies]
 ivcnotes.workspace = true
 reqwest = {version = "0.12.5", features = ["blocking"]}

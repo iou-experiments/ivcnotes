@@ -88,7 +88,7 @@ impl Service<Concrete> for BlockingHttpClient {
         send(Method::GET, path, msg)
     }
 
-    fn send_note(&self, msg: &msg::request::Note<Concrete>) -> Result<(), Error> {
+    fn send_note(&self, msg: &msg::request::SendNote<Concrete>) -> Result<(), Error> {
         let path = self.path(Path::SendNote);
         send(Method::POST, path, msg)
     }

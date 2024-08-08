@@ -119,7 +119,7 @@ pub mod concrete {
     use crate::poseidon::PoseidonConfigs;
     use ark_bn254::{Bn254, Fr};
     use ark_crypto_primitives::{
-        snark::CircuitSpecificSetupSNARK,
+        snark::{CircuitSpecificSetupSNARK, SNARK},
         sponge::poseidon::{find_poseidon_ark_and_mds, PoseidonConfig},
     };
     use ark_ed_on_bn254::EdwardsConfig;
@@ -136,6 +136,10 @@ pub mod concrete {
 
     #[derive(Clone)]
     pub struct Concrete;
+    pub type ConcreteF = <Concrete as IVC>::Field;
+    pub type ConcreteVK = <<Concrete as IVC>::Snark as SNARK<ConcreteF>>::VerifyingKey;
+    pub type ConcretePK = <<Concrete as IVC>::Snark as SNARK<ConcreteF>>::ProvingKey;
+    pub type ConcreteTE = <Concrete as IVC>::TE;
 
     impl IVC for Concrete {
         type Snark = Groth16<Bn254>;

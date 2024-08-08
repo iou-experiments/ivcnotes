@@ -171,7 +171,7 @@ pub mod ark_serde {
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use serde::{Deserialize, Serialize};
 
-    pub(crate) fn serialize<E, S>(e: &E, s: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<E, S>(e: &E, s: S) -> Result<S::Ok, S::Error>
     where
         E: CanonicalSerialize,
         S: serde::Serializer,
@@ -182,7 +182,7 @@ pub mod ark_serde {
         bytes.serialize(s)
     }
 
-    pub(crate) fn deserialize<'de, E, D>(d: D) -> Result<E, D::Error>
+    pub fn deserialize<'de, E, D>(d: D) -> Result<E, D::Error>
     where
         E: CanonicalDeserialize,
         D: serde::Deserializer<'de>,
