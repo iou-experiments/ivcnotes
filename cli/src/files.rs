@@ -43,25 +43,25 @@ pub(crate) struct Creds {
 use crate::CreateArgs;
 
 impl Creds {
-    pub(crate) fn register(
-        username: String,
-        address: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
+    // pub(crate) fn register(
+    //     username: String,
+    //     address: String,
+    // ) -> Result<(), Box<dyn std::error::Error>> {
+    //     let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
 
-        let register_msg = UserRegister {
-            username: username.clone(),
-            address,
-            public_key: "pub_key".to_owned(), // How do we get this? TODO
-        };
+    //     let register_msg = UserRegister {
+    //         username: username.clone(),
+    //         address,
+    //         public_key: "pub_key".to_owned(), // How do we get this? TODO
+    //     };
 
-        let user = client.register(register_msg);
+    //     let user = client.register(register_msg);
 
-        println!("Successfully registered user: {:#?}", user.unwrap());
-        Ok(())
-    }
+    //     println!("Successfully registered user: {:#?}", user.unwrap());
+    //     Ok(())
+    // }
 
-    pub(crate) fn register_auto() -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) fn register() -> Result<(), Box<dyn std::error::Error>> {
         // Read credentials from file
         let creds = FileMan::_read_creds()?;
 
@@ -72,8 +72,8 @@ impl Creds {
             public_key: creds.pubkey,
         };
 
-        let user = client.register(register_msg);
-        println!("Successfully registered user: {:#?}", user.unwrap());
+        let _ = client.register(register_msg);
+        println!("Successfully registered user");
         Ok(())
     }
 
