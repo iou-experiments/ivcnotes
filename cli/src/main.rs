@@ -58,8 +58,10 @@ fn main() {
     let cli = Cli::parse();
     match &cli.command {
         Commands::Create(args) => Creds::generate(args).unwrap(),
-        Commands::Info => FileMan::list_accounts(),
         Commands::Register => Creds::register().unwrap(),
+
+        Commands::Info => FileMan::list_accounts(),
+
         // TODO: ISSUE & TRANSFER NOTE includes IVCNOTES & SERVICE
         // TODO: SPLIT & TRANSFER NOTE includes IVCNOTES & SERVICE
         // SPLIT TODO: store nullifier

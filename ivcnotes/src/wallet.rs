@@ -464,7 +464,7 @@ pub(crate) mod test {
         w0.issue(&mut OsRng, &asset, 1000, "user1").unwrap();
         w1.get_notes().unwrap();
 
-        w1.split(&mut OsRng, 0, 800, "user2").unwrap();
+        w0.split(&mut OsRng, 0, 800, "user1").unwrap();
         w2.get_notes().unwrap();
 
         w2.split(&mut OsRng, 0, 700, "user3").unwrap();

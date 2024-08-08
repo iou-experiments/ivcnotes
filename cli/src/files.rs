@@ -4,9 +4,13 @@ use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng};
 use chacha20poly1305::ChaCha20Poly1305;
 use colored::Colorize;
 use digest::Digest;
-use ivcnotes::circuit::concrete::{Concrete, POSEIDON_CFG};
+use ivcnotes::circuit::concrete::{circuit_setup, Concrete, POSEIDON_CFG};
 use ivcnotes::id::Auth;
 use ivcnotes::FWrap;
+use ivcnotes::{
+    circuit::{Prover, Verifier},
+    poseidon::PoseidonConfigs,
+};
 use serde_derive::{Deserialize, Serialize};
 use service::blocking::{BlockingHttpClient, HttpScheme};
 use service::schema::UserRegister;
@@ -40,39 +44,74 @@ pub(crate) struct Creds {
     pub(crate) pubkey: String,
 }
 
+pub struct CliWallet<E: ivcnotes::circuit::IVC> {
+    // receivables are transferable notes
+    pub spendables: Vec<ivcnotes::note::NoteHistory<E>>,
+    // auth object that holds private keys
+    pub auth: Auth<E>,
+    // configs for poseidion hasher
+    pub h: PoseidonConfigs<E::Field>,
+    // ivc prover
+    pub prover: Prover<E>,
+    // ivc verifier
+    pub verifier: Verifier<E>,
+    // known users/peers
+    pub address_book: ivcnotes::wallet::AddressBook<E>,
+    // communications
+    pub comm: BlockingHttpClient,
+    // username
+    pub username: String,
+}
+
+impl<E: ivcnotes::circuit::IVC> CliWallet<E> {
+    pub fn new(
+        auth: Auth<E>,
+        poseidon: &PoseidonConfigs<E::Field>,
+        prover: Prover<E>,
+        verifier: Verifier<E>,
+        comm: BlockingHttpClient,
+        username: String,
+    ) -> Self {
+        Self {
+            spendables: vec![],
+            auth,
+            h: poseidon.clone(),
+            prover,
+            verifier,
+            comm,
+            address_book: ivcnotes::wallet::AddressBook::default(),
+            username,
+        }
+    }
+}
+
 use crate::CreateArgs;
 
 impl Creds {
-    // pub(crate) fn register(
-    //     username: String,
-    //     address: String,
-    // ) -> Result<(), Box<dyn std::error::Error>> {
-    //     let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
-
-    //     let register_msg = UserRegister {
-    //         username: username.clone(),
-    //         address,
-    //         public_key: "pub_key".to_owned(), // How do we get this? TODO
-    //     };
-
-    //     let user = client.register(register_msg);
-
-    //     println!("Successfully registered user: {:#?}", user.unwrap());
-    //     Ok(())
-    // }
-
     pub(crate) fn register() -> Result<(), Box<dyn std::error::Error>> {
         // Read credentials from file
         let creds = FileMan::_read_creds()?;
 
         let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
         let register_msg = UserRegister {
-            username: creds.username,
+            username: creds.username.clone(),
             address: creds.address,
             public_key: creds.pubkey,
         };
+        let username = creds.username.clone();
+        let (pk, vk) = circuit_setup();
+        let h = POSEIDON_CFG.clone();
+        let auth = ivcnotes::id::Auth::<ivcnotes::circuit::concrete::Concrete>::generate(
+            &h,
+            &mut rand::thread_rng(),
+        )
+        .unwrap();
 
-        let _ = client.register(register_msg);
+        let prover = Prover::new(pk);
+        let verifier = Verifier::new(vk);
+        let wallet = CliWallet::new(auth, &h, prover, verifier, client, username);
+
+        let _ = wallet.comm.register(register_msg);
         println!("Successfully registered user");
         Ok(())
     }
@@ -176,18 +215,6 @@ impl FileMan {
         dir.push(Self::ANCHOR_FILE);
         dir
     }
-
-    // fn path_vk() -> PathBuf {
-    //     let mut dir = Self::dir_app();
-    //     dir.push(Self::VK_FILE);
-    //     dir
-    // }
-
-    // fn path_pk() -> PathBuf {
-    //     let mut dir = Self::dir_app();
-    //     dir.push(Self::PK_FILE);
-    //     dir
-    // }
 
     pub(crate) fn update_current_address(address: &str) -> std::io::Result<()> {
         let file = FileMan::path_anchor();
