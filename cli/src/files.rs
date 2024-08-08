@@ -149,10 +149,11 @@ impl Creds {
 
     pub(crate) fn generate(args: &CreateArgs) -> std::io::Result<()> {
         println!("{}", "> Generating new key...".blue());
-        let auth = Auth::<Concrete>::generate(&POSEIDON_CFG, &mut OsRng).unwrap();
+        let (pk, vk) = circuit_setup();
+        let h = POSEIDON_CFG.clone();
+        let auth = Auth::<Concrete>::generate(&h, &mut OsRng).unwrap();
         let address = auth.address().short_hex();
         let pubkey = auth.public_key.clone();
-
         let smtg_pubkey = ivcnotes::service::SmtgWithPubkey { pubkey };
         let pubkey_json = serde_json::to_string(&smtg_pubkey).unwrap();
         println!(
@@ -164,15 +165,20 @@ impl Creds {
             "> Username:".blue(),
             args.username.clone(),
         );
-        let auth = auth.to_bytes();
-        let auth = encrypt(&auth, args.pass.as_bytes());
-        let creds = Creds {
-            username: args.username.clone(),
+
+        // Create CliWallet instance
+        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
+        let mut wallet = CliWallet::new(
             auth,
-            address: address.clone(),
-            pubkey: pubkey_json,
-        };
-        FileMan::write_creds(&creds)?;
+            &h,
+            Prover::new(pk),
+            Verifier::new(vk),
+            client,
+            args.username.clone(),
+        );
+
+        // Instead of encrypting and saving auth in Creds, save the entire wallet:
+        FileMan::write_wallet(&wallet, &args.username.clone())?; // You'll need to implement this
         FileMan::update_current_address(&address)?;
         Ok(())
     }
@@ -246,6 +252,32 @@ impl FileMan {
         serde_json::to_writer_pretty(writer, &creds).map_err(Into::into)
     }
 
+    pub(crate) fn write_wallet<E: ivcnotes::circuit::IVC>(
+        wallet: &CliWallet<E>,
+        address: &str,
+    ) -> std::io::Result<()> {
+        let path = Self::path_wallet(address.to_string()); // We'll define path_wallet below
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(writer, wallet).map_err(Into::into)
+    }
+
+    pub(crate) fn read_wallet<E: ivcnotes::circuit::IVC>(address: &str) -> CliWallet<E> {
+        let path = Self::path_wallet(address.to_string());
+        let file = File::open(path).expect("failed to open");
+        let reader = BufReader::new(file);
+        serde_json::from_reader(reader)
+            .map_err(Into::into)
+            .expect("failed to read")
+    }
+
+    fn path_wallet(addr: String) -> PathBuf {
+        let mut dir = Self::dir_app();
+        dir.push(addr);
+        fs::create_dir_all(&dir).unwrap();
+        dir.push("wallet.json"); // File name for the wallet
+        dir
+    }
     pub(crate) fn clear_contents() -> std::io::Result<()> {
         let dir = Self::dir_app();
         for entry in fs::read_dir(dir)? {
