@@ -159,6 +159,7 @@ impl Cli {
                 sender: creds.contact(),
             },
             receiver: receiver.address,
+            receiver_username: args.receiver.clone(),
         };
 
         service.send_note(&msg)?;
@@ -186,8 +187,9 @@ impl Cli {
                 sender: creds.contact(),
             },
             receiver: receiver.address,
+            receiver_username: args.receiver.clone(),
         };
-        service.send_note(&msg)?;
+        service.send_note(&msg).expect("1");
         Notebook::add_note(note)?;
         Ok(())
     }

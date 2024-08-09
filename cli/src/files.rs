@@ -50,7 +50,7 @@ impl FileMan {
     const ADDRESS_BOOK_FILE: &'static str = "address_book.json";
     const NOTEBOOK_FILE: &'static str = "notes.json";
     const PK_FILE: &'static str = "pk.g16";
-    const VK_FILE: &'static str = "vk.p16";
+    const VK_FILE: &'static str = "vk.g16";
 
     pub(crate) fn dir_app() -> PathBuf {
         let mut dir = Self::dir_home();

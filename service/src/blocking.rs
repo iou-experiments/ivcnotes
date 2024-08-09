@@ -48,8 +48,10 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
     req: &Req,
 ) -> Result<Res, Error> {
     let client = reqwest::blocking::Client::new();
-    let json = serde_json::to_string(&req).unwrap();
-    println!("{:#?}", json);
+    let json = serde_json::to_string(req)
+        .map_err(|e| Error::Service(format!("Failed to serialize request: {}", e)))?;
+    println!("Request JSON: {:#?}", json);
+
     let res = client
         .request(method, url)
         .header("Accept", "*/*")
@@ -57,8 +59,13 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
         .body(json)
         .send()
         .map_err(|e| Error::Service(format!("Failed to send request: {}", e)))?;
-    println!("{:#?}", res);
-    serde_json::from_reader(res)
+
+    let body = res
+        .text()
+        .map_err(|e| Error::Service(format!("Failed to read response body: {}", e)))?;
+    println!("Response body: {}", body);
+
+    serde_json::from_str(&body)
         .map_err(|e| Error::Service(format!("Failed to convert response body: {}", e)))
 }
 
@@ -244,7 +251,7 @@ impl BlockingHttpClient {
 
         let send_and_transfer_json = NoteHistoryRequest {
             owner_username: None,
-            recipient_username: "user0".to_owned(),
+            recipient_username: msg.receiver_username.to_owned(),
             note_history: SaveNoteHistoryRequestSchema {
                 data: msg.note_history.encrypted.data.clone(),
                 address: address_json,

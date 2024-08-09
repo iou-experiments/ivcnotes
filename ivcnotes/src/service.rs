@@ -52,6 +52,7 @@ pub mod msg {
             pub note_history: EncryptedNoteHistory<E>,
             #[serde(with = "crate::ark_serde")]
             pub receiver: Address<E::Field>,
+            pub receiver_username: String,
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize)]
