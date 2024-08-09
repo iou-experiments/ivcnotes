@@ -85,7 +85,7 @@ where
     // store the signature
     pub(crate) signature: Signature<TE>,
     // and the nullifier
-    pub(crate) nullifier: Nullifier<TE::BaseField>,
+    pub nullifier: Nullifier<TE::BaseField>,
 }
 
 impl<F: PrimeField + Absorb> SplitTx<F> {
@@ -130,7 +130,7 @@ where
         }
     }
 
-    pub(crate) fn nullifier(&self) -> &Nullifier<TE::BaseField> {
+    pub fn nullifier(&self) -> &Nullifier<TE::BaseField> {
         &self.nullifier
     }
 
