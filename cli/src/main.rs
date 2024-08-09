@@ -36,6 +36,7 @@ enum Commands {
     Register(RegisterArgs),
     Issue(IssueArgs),
     Transfer(TransferArgs),
+    Notes(ReadNotesArgs),
     Info,
     Reset,
 }
@@ -44,6 +45,11 @@ enum Commands {
 struct CreateArgs {
     #[arg(short, long, default_value = "")]
     pass: String,
+}
+
+#[derive(Args)]
+struct ReadNotesArgs {
+    username: String,
 }
 
 #[derive(Args)]
@@ -96,6 +102,7 @@ fn main() {
         Commands::Register(args) => cli.register(args, &service).unwrap(),
         Commands::Issue(args) => cli.issue(args, &service).unwrap(),
         Commands::Transfer(args) => cli.transfer(args, &service).unwrap(),
+        Commands::Notes(args) => cli.get_notes(args.username.clone(), &service).unwrap(),
         Commands::Reset => FileMan::clear_contents().unwrap(),
     }
 }
@@ -116,6 +123,16 @@ impl Cli {
                 Ok(contact)
             }
         }
+    }
+
+    pub(crate) fn get_notes(
+        &self,
+        username: String,
+        service: &BlockingHttpClient,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let notes = service.get_notes(username)?;
+        println!("Successfully retrieved notes for user: {:#?}", notes);
+        Ok(())
     }
 
     pub(crate) fn register(
