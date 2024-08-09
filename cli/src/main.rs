@@ -5,6 +5,7 @@ use core::str;
 use creds::Creds;
 use files::FileMan;
 use ivcnotes::note::EncryptedNoteHistory;
+use ivcnotes::note::NoteHistory;
 use ivcnotes::service::msg;
 use ivcnotes::{
     asset::Terms,
@@ -38,7 +39,7 @@ enum Commands {
     Notes(ReadNotesArgs),
     Info,
     Reset,
-    Register,
+    Switch,
 }
 
 #[derive(Args)]
@@ -108,6 +109,7 @@ fn main() {
         Commands::Transfer(args) => cli.transfer(args, &service).unwrap(),
         Commands::Notes(args) => cli.get_notes(args, &service).unwrap(),
         Commands::Reset => FileMan::clear_contents().unwrap(),
+        Commands::Switch => cli.list_and_switch_accounts(),
     }
 }
 
@@ -136,8 +138,18 @@ impl Cli {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut creds = FileMan::read_creds().unwrap();
         creds.contact.username = args.username.clone();
-        let notes = service.get_notes(creds.contact.username.clone())?;
-        println!("Successfully retrieved notes for user: {:#?}", notes);
+        let auth = creds.auth(&args.pass)?;
+        println!("got auth");
+        let encrypted = service.get_notes(creds.contact.username.clone())?;
+        for encrypted_note in encrypted.notes {
+            // Decrypt the note  TODO idk how to decrypt this hit a wall
+            let decrypted_note: NoteHistory<Concrete> = auth
+                .decrypt(&auth.public_key, &encrypted_note.encrypted)
+                .expect("couldn't decrypt");
+            // Add the decrypted note to the notebook
+            Notebook::add_note(decrypted_note)?;
+        }
+
         Ok(())
     }
 
@@ -266,4 +278,63 @@ impl Cli {
             Err(_) => println!("{}", "No account.".blue()),
         }
     }
+
+    pub(crate) fn list_and_switch_accounts(&self) {
+        let current = FileMan::read_current_account().unwrap_or_else(|_| String::new());
+        let path = FileMan::dir_app();
+        let mut accounts = Vec::new();
+
+        println!("Available accounts:");
+        for (index, entry) in fs::read_dir(path).expect("1").enumerate() {
+            let path = entry.expect("2").path();
+            if path.is_dir() {
+                if let Some(address) = path.file_name() {
+                    if let Some(address_str) = address.to_str() {
+                        let is_current = address_str == current;
+                        let current_indicator = if is_current {
+                            " (current)".blue()
+                        } else {
+                            "".into()
+                        };
+                        println!(
+                            "{}. {}{}",
+                            index + 1,
+                            address_str.yellow(),
+                            current_indicator
+                        );
+                        accounts.push(address_str.to_string());
+                    }
+                }
+            }
+        }
+
+        if accounts.is_empty() {
+            println!("{}", "No accounts found.".blue());
+        }
+
+        print!("Enter the number of the account to switch to (or press Enter to cancel): ");
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).expect("3");
+
+        let input = input.trim();
+        if !input.is_empty() {
+            if let Ok(selection) = input.parse::<usize>() {
+                if selection > 0 && selection <= accounts.len() {
+                    let selected_account = &accounts[selection - 1];
+                    FileMan::update_current_account(selected_account).expect("4");
+                    println!(
+                        "{} {}",
+                        "Switched to account:".green(),
+                        selected_account.yellow()
+                    );
+                } else {
+                    println!("{}", "Invalid selection.".red());
+                }
+            } else {
+                println!("{}", "Invalid input.".red());
+            }
+        }
+    }
 }
+
