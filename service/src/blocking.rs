@@ -164,8 +164,8 @@ impl BlockingHttpClient {
             nullifier,
             state,
             owner,
-            step: 1,
-            note: "1".to_owned(),
+            step: 0,
+            note: "".to_owned(),
         };
 
         let url = self.path(Path::StoreNullifier);
@@ -198,11 +198,9 @@ impl BlockingHttpClient {
 
         match send::<_, serde_json::Value>(Method::GET, url, &nullifier_request) {
             Ok(json) => {
-                println!("Response: {:#?}", json);
-
                 if json.get("Ok").is_some() {
                     // This is the case where we have a successful response
-                    Ok("Warning: Betrayal detected, sender was flagged".to_string())
+                    panic!("CRITICAL ERROR: Betrayal detected! The sender was flagged. Exiting for your safety.");
                 } else if json.as_str() == Some("Error") {
                     // This is the case where we have an "Error" string
                     Ok("Nullifier verified, no betrayal detected".to_string())
@@ -267,11 +265,10 @@ impl BlockingHttpClient {
         let username_request = crate::schema::UsernameRequest {
             username: username.clone(),
         };
-
+        println!("1");
         let url = self.path(Path::GetNoteHistoryForUser);
         let note_history: Vec<NoteHistorySaved> = send(Method::GET, url, &username_request)
             .map_err(|e| format!("Failed to get notes: {}", e))?;
-
         let encrypted_note_history: Vec<EncryptedNoteHistory> = note_history
             .into_iter()
             .map(|nh| self.convert_note_history_to_encrypted_note_history(nh, "user0".to_owned()))

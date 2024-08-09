@@ -193,7 +193,14 @@ impl<E: IVC> Wallet<E> {
         mut note_history: NoteHistory<E>,
         value: u64,
         receiver: &Contact<E>,
-    ) -> Result<(NoteHistory<E>, NoteHistory<E>), crate::Error> {
+    ) -> Result<
+        (
+            NoteHistory<E>,
+            NoteHistory<E>,
+            SealedSplitTx<<E as IVC>::TE>,
+        ),
+        crate::Error,
+    > {
         let sender = auth.address();
 
         let note_in = note_history.current_note;
@@ -236,7 +243,6 @@ impl<E: IVC> Wallet<E> {
         let tx = SplitTx::new(&note_in, &note_out_0, &note_out_1);
         // and sign and generate the nullifier
         let sealed = auth.split(&self.h, &tx)?;
-
         // construct public inputs
         let state_in = &note_history.state(&self.h);
         let (_, blind_note_hash_0) = self.h.note(sealed.note_out_0());
@@ -296,7 +302,7 @@ impl<E: IVC> Wallet<E> {
         note_history_1.current_note = note_out_1;
         note_history_1.sibling = blind_note_hash_0;
 
-        Ok((note_history_0, note_history_1))
+        Ok((note_history_0, note_history_1, sealed))
     }
 
     pub fn verify_incoming(&mut self, note_history: &NoteHistory<E>) -> Result<(), crate::Error> {

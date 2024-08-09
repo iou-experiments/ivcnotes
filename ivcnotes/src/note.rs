@@ -139,9 +139,9 @@ pub struct NoteHistory<E: IVC> {
     // asset that defines the terms and issuer]
     pub(crate) asset: Asset<E::Field>,
     // part of intermediate public inputs
-    pub(crate) steps: Vec<IVCStep<E>>,
+    pub steps: Vec<IVCStep<E>>,
     // unspent note
-    pub(crate) current_note: Note<E::Field>,
+    pub current_note: Note<E::Field>,
     // sibling of unspent note
     #[serde(with = "crate::ark_serde")]
     pub(crate) sibling: BlindNoteHash<E::Field>,

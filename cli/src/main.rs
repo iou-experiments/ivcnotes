@@ -17,7 +17,6 @@ use notebook::Notebook;
 use rand_core::OsRng;
 use service::blocking::{BlockingHttpClient, HttpScheme};
 use std::fs::{self};
-
 pub(crate) mod address_book;
 pub(crate) mod creds;
 pub(crate) mod files;
@@ -72,6 +71,8 @@ struct IssueArgs {
 struct TransferArgs {
     #[arg(short, long, default_value = "")]
     pass: String,
+    #[arg(short, long, default_value = "user")]
+    from: String,
     index: usize,
     receiver: String,
     value: u64,
@@ -163,13 +164,34 @@ impl Cli {
         service: &BlockingHttpClient,
     ) -> Result<(), Error> {
         let creds = FileMan::read_creds()?;
-        let auth = creds.auth(&args.pass)?;
+        let auth: ivcnotes::id::Auth<Concrete> = creds.auth(&args.pass)?;
 
         let w = wallet(&args.pass)?;
         let receiver = self.get_contact(args.receiver.clone(), service)?;
         let notes = Notebook::get_notes()?;
         let note = notes[args.index].clone();
-        let (note_0, note_1) = w.split(&mut OsRng, &auth, note, args.value, &receiver)?;
+
+        // store nullifier for verification.
+        let (note_0, note_1, sealed) = w.split(&mut OsRng, &auth, note, args.value, &receiver)?;
+        let note_0_str = format!(
+            "Current Note: {:?}, Steps: {}",
+            note_0.current_note,
+            note_0.steps.len()
+        );
+        let note_1_str = format!(
+            "Current Note: {:?}, Steps: {}",
+            note_1.current_note,
+            note_1.steps.len()
+        );
+        let nullifier_str = sealed.nullifier().to_string();
+        // Combine the strings
+        let combined_str = format!("{}{}", note_0_str, note_1_str);
+        let _ = service
+            .get_nullifier(nullifier_str.clone(), combined_str.clone())
+            .expect("hm");
+        let _ = service
+            .store_nullifier(nullifier_str, combined_str, args.from.clone())
+            .map_err(|e| (format!("Failed to store nullifier: {}", e)));
 
         let encrypted = auth.encrypt(&receiver.public_key, &note_1);
         let msg = msg::request::SendNote {
