@@ -1,15 +1,16 @@
-use crate::schema::UserRegister;
 use crate::schema::{
     CreateUserSchema, IdentifierWrapper, NoteHistoryRequest, NoteHistorySaved, NoteNullifierSchema,
     NullifierRequest, NullifierResponseData, SaveNoteHistoryRequestSchema, User, UserIdentifier,
 };
-
+type TE = ark_ed_on_bn254::EdwardsConfig;
 use ivcnotes::circuit::concrete::Concrete;
 use ivcnotes::service::msg;
+use ivcnotes::service::msg::response::Contact;
+use ivcnotes::service::{SmtgWithAddress, SmtgWithPubkey};
 use ivcnotes::Error;
 use ivcnotes::FWrap;
+use ivcnotes::{Address, PublicKey};
 use reqwest::{Method, Url};
-
 pub enum HttpScheme {
     Http,
     Https,
@@ -117,7 +118,35 @@ impl BlockingHttpClient {
         Ok(res)
     }
 
-    //todo
+    pub fn get_contact(&self, identifier: UserIdentifier) -> Result<Contact<Concrete>, String> {
+        let user = self.get_user_from_db(identifier).expect("cant fetch user");
+        let address: Address<ark_bn254::Fr> = match user.address {
+            Some(ref address_str) => {
+                let smtg: SmtgWithAddress<ark_bn254::Fr> =
+                    serde_json::from_str(address_str).expect("no address");
+                smtg.address
+            }
+            None => return Err("User address is None".into()),
+        };
+
+        let pubkey: PublicKey<TE> = match user.pubkey {
+            Some(ref pubkey_str) => {
+                println!("string of pubkey, {:#?}", pubkey_str);
+                let smtg: SmtgWithPubkey<TE> = serde_json::from_str(pubkey_str).expect("no pubkey");
+                smtg.pubkey
+            }
+            None => return Err("User pubkey is None".into()),
+        };
+
+        let contact = Contact {
+            public_key: pubkey,
+            address,
+            username: user.username.ok_or("Username is None")?,
+        };
+
+        Ok(contact)
+    }
+
     pub fn store_nullifier(
         &self,
         nullifier: String,
@@ -181,11 +210,20 @@ impl BlockingHttpClient {
         }
     }
 
-    pub fn register(&self, msg: UserRegister) -> Result<User, String> {
+    pub fn register(&self, msg: Contact<Concrete>) -> Result<User, String> {
+        let pubkey = msg.public_key.clone();
+        // serialization with crate::serde
+        let smtg_pubkey = SmtgWithPubkey { pubkey };
+        let smtg_address = SmtgWithAddress {
+            address: msg.address,
+        };
+        let pubkey_json = serde_json::to_string(&smtg_pubkey).unwrap();
+        let address_json = serde_json::to_string(&smtg_address).unwrap();
+
         let create_user_schema = CreateUserSchema {
             username: msg.username.clone(),
-            address: msg.address.clone(),
-            pubkey: msg.public_key.clone(),
+            address: address_json,
+            pubkey: pubkey_json,
             nonce: String::new(),
             messages: Vec::new(),
             notes: Vec::new(),
@@ -199,8 +237,7 @@ impl BlockingHttpClient {
         Ok(user)
     }
 
-    //todo
-    pub fn send_note(&self, msg: &msg::request::Note<Concrete>) -> Result<(), Error> {
+    pub fn send_note(&self, msg: &msg::request::SendNote<Concrete>) -> Result<(), Error> {
         let address_bytes = msg.receiver.to_bytes();
         let address_json =
             serde_json::to_string(&address_bytes).expect("failed to serialize address");

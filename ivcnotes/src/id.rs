@@ -68,16 +68,12 @@ impl<E: IVC> Auth<E> {
         nullifier_key(&self.secret)
     }
 
-    pub(crate) fn encrypt<T: CipherText>(
-        &self,
-        receiver: &PublicKey<E::TE>,
-        data: &T,
-    ) -> EncryptedData {
+    pub fn encrypt<T: CipherText>(&self, receiver: &PublicKey<E::TE>, data: &T) -> EncryptedData {
         let shared = self.shared_key(receiver);
         T::encrypt(&shared, data)
     }
 
-    pub(crate) fn decrypt<T: CipherText>(
+    pub fn decrypt<T: CipherText>(
         &self,
         sender: &PublicKey<E::TE>,
         data: &EncryptedData,
@@ -86,7 +82,7 @@ impl<E: IVC> Auth<E> {
         T::decrypt(&shared, data)
     }
 
-    pub(crate) fn public_key(&self) -> &PublicKey<E::TE> {
+    pub fn public_key(&self) -> &PublicKey<E::TE> {
         &self.public_key
     }
 
