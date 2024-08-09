@@ -71,7 +71,7 @@ struct IssueArgs {
 struct TransferArgs {
     #[arg(short, long, default_value = "")]
     pass: String,
-    #[arg(short, long, default_value = "user")]
+    #[arg(short, long = "from")]
     from: String,
     index: usize,
     receiver: String,

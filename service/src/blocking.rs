@@ -201,11 +201,9 @@ impl BlockingHttpClient {
                 if json.get("Ok").is_some() {
                     // This is the case where we have a successful response
                     panic!("CRITICAL ERROR: Betrayal detected! The sender was flagged. Exiting for your safety.");
-                } else if json.as_str() == Some("Error") {
+                } else {
                     // This is the case where we have an "Error" string
                     Ok("Nullifier verified, no betrayal detected".to_string())
-                } else {
-                    Err("Unexpected response format".to_string())
                 }
             }
             Err(Error::Service(e)) if e.contains("404 Not Found") => {
