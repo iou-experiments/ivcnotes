@@ -48,6 +48,8 @@ struct CreateArgs {
 
 #[derive(Args)]
 struct ReadNotesArgs {
+    #[arg(short, long, default_value = "")]
+    pass: String,
     username: String,
 }
 
@@ -103,7 +105,7 @@ fn main() {
         Commands::Register(args) => cli.register(args, &service).unwrap(),
         Commands::Issue(args) => cli.issue(args, &service).unwrap(),
         Commands::Transfer(args) => cli.transfer(args, &service).unwrap(),
-        Commands::Notes(args) => cli.get_notes(args.username.clone(), &service).unwrap(),
+        Commands::Notes(args) => cli.get_notes(args, &service).unwrap(),
         Commands::Reset => FileMan::clear_contents().unwrap(),
     }
 }
@@ -128,10 +130,12 @@ impl Cli {
 
     pub(crate) fn get_notes(
         &self,
-        username: String,
+        args: &ReadNotesArgs,
         service: &BlockingHttpClient,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let notes = service.get_notes(username)?;
+        let mut creds = FileMan::read_creds().unwrap();
+        creds.contact.username = args.username.clone();
+        let notes = service.get_notes(creds.contact.username.clone())?;
         println!("Successfully retrieved notes for user: {:#?}", notes);
         Ok(())
     }
