@@ -38,6 +38,7 @@ enum Commands {
     Notes(ReadNotesArgs),
     Info,
     Reset,
+    Register,
 }
 
 #[derive(Args)]
