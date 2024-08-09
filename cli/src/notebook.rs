@@ -8,9 +8,12 @@ pub(crate) struct Notebook(Vec<NoteHistory<Concrete>>);
 
 impl Notebook {
     pub(crate) fn create() -> Result<(), Error> {
-        match FileMan::read_address_book() {
-            Err(_) => FileMan::write_notebook(&Notebook::default()),
+        match FileMan::read_notebook() {
             Ok(_) => Ok(()),
+            Err(_) => {
+                let empty_notebook = Notebook::default();
+                FileMan::write_notebook(&empty_notebook)
+            }
         }
     }
 

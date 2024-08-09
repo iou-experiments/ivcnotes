@@ -16,7 +16,7 @@ use ivcnotes::{
 use notebook::Notebook;
 use rand_core::OsRng;
 use service::blocking::{BlockingHttpClient, HttpScheme};
-use std::fs;
+use std::fs::{self};
 
 pub(crate) mod address_book;
 pub(crate) mod creds;
@@ -76,6 +76,7 @@ pub(crate) fn wallet(pass: &str) -> Result<Wallet<Concrete>, Error> {
     let auth = creds.auth(pass)?;
     let prover = FileMan::read_prover()?;
     let verifier = FileMan::read_verifier()?;
+    let _ = FileMan::read_notebook()?;
 
     Ok(Wallet::new(
         auth,
@@ -131,11 +132,12 @@ impl Cli {
     }
 
     pub(crate) fn create(&self, args: &CreateArgs) -> Result<(), Error> {
-        AddressBook::create()?;
-        Notebook::create()?;
         let creds: Creds = Creds::generate(&args.pass);
         FileMan::write_creds(&creds)?;
-        FileMan::update_current_account(&creds.contact.address.short_hex())
+        FileMan::update_current_account(&creds.contact.address.short_hex())?;
+        AddressBook::create()?;
+        Notebook::create()?;
+        Ok(())
     }
 
     pub(crate) fn transfer(
@@ -162,7 +164,9 @@ impl Cli {
             receiver_username: args.receiver.clone(),
         };
 
-        service.send_note(&msg)?;
+        let _ = service
+            .send_note(&msg)
+            .map_err(|e| (format!("Failed to send note: {}", e)));
         Notebook::update_note(args.index, note_0)?;
         Ok(())
     }
@@ -189,7 +193,10 @@ impl Cli {
             receiver: receiver.address,
             receiver_username: args.receiver.clone(),
         };
-        service.send_note(&msg).expect("1");
+        let _ = service
+            .send_note(&msg)
+            .map_err(|e| (format!("Failed to send note: {}", e)));
+
         Notebook::add_note(note)?;
         Ok(())
     }

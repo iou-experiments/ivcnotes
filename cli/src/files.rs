@@ -151,9 +151,18 @@ impl FileMan {
     }
 
     pub(crate) fn read_notebook() -> Result<Notebook, Error> {
-        let addr = Self::read_current_account()?;
-        let book = FileMan::open(Storage::Notebook { addr })?;
-        serde_json::from_reader(book).map_err(|_| Error::Data("Failed to read notebook".into()))
+        match Self::read_current_account() {
+            Ok(addr) => {
+                let book = FileMan::open(Storage::Notebook { addr })
+                    .map_err(|e| Error::Data(format!("Failed to open notebook: {}", e)))?;
+                serde_json::from_reader(book)
+                    .map_err(|e| Error::Data(format!("Failed to deserialize notebook: {}", e)))
+            }
+            Err(_) => {
+                // If we can't read the current account, return an empty notebook
+                Ok(Notebook::default())
+            }
+        }
     }
 
     pub(crate) fn write_notebook(notebook: &Notebook) -> Result<(), Error> {
