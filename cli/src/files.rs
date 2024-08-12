@@ -1,29 +1,28 @@
+use crate::address_book::AddressBook;
+use crate::creds::Creds;
+use crate::notebook::Notebook;
 use chacha20poly1305::aead::generic_array::typenum::Unsigned;
 use chacha20poly1305::aead::generic_array::GenericArray;
 use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng};
 use chacha20poly1305::ChaCha20Poly1305;
-use colored::Colorize;
 use digest::Digest;
-use ivcnotes::circuit::concrete::{Concrete, POSEIDON_CFG};
-use ivcnotes::id::Auth;
-use ivcnotes::FWrap;
-use serde_derive::{Deserialize, Serialize};
-use service::blocking::{BlockingHttpClient, HttpScheme};
-use service::schema::UserRegister;
+use ivcnotes::circuit::concrete::Concrete;
+use ivcnotes::circuit::{Prover, Verifier, IVC};
+use ivcnotes::{Error, FWrap};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
 
-pub(crate) fn encrypt(cleartext: &[u8], key: &[u8]) -> Vec<u8> {
+pub(crate) fn encrypt(text: &[u8], key: &[u8]) -> Vec<u8> {
     let key = sha2::Sha256::digest(key);
     let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key[..]));
     let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
-    let mut encrypted = cipher.encrypt(&nonce, cleartext).unwrap();
+    let mut encrypted = cipher.encrypt(&nonce, text).unwrap();
     encrypted.splice(..0, nonce.iter().copied());
     encrypted
 }
 
-pub(crate) fn _decrypt(encrypted: &[u8], key: &[u8]) -> Vec<u8> {
+pub(crate) fn decrypt(encrypted: &[u8], key: &[u8]) -> Vec<u8> {
     let key = sha2::Sha256::digest(key);
     type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
     let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key[..]));
@@ -32,191 +31,145 @@ pub(crate) fn _decrypt(encrypted: &[u8], key: &[u8]) -> Vec<u8> {
     cipher.decrypt(nonce, encrypted).unwrap()
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct Creds {
-    pub(crate) username: String,
-    pub(crate) address: String,
-    pub(crate) auth: Vec<u8>,
-    pub(crate) pubkey: String,
-}
-
-use crate::CreateArgs;
-
-impl Creds {
-    // pub(crate) fn register(
-    //     username: String,
-    //     address: String,
-    // ) -> Result<(), Box<dyn std::error::Error>> {
-    //     let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
-
-    //     let register_msg = UserRegister {
-    //         username: username.clone(),
-    //         address,
-    //         public_key: "pub_key".to_owned(), // How do we get this? TODO
-    //     };
-
-    //     let user = client.register(register_msg);
-
-    //     println!("Successfully registered user: {:#?}", user.unwrap());
-    //     Ok(())
-    // }
-
-    pub(crate) fn register() -> Result<(), Box<dyn std::error::Error>> {
-        // Read credentials from file
-        let creds = FileMan::_read_creds()?;
-
-        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
-        let register_msg = UserRegister {
-            username: creds.username,
-            address: creds.address,
-            public_key: creds.pubkey,
-        };
-
-        let _ = client.register(register_msg);
-        println!("Successfully registered user");
-        Ok(())
-    }
-
-    pub(crate) fn get_user(username: String) -> Result<(), Box<dyn std::error::Error>> {
-        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
-
-        let user = client.get_user_from_db(service::schema::UserIdentifier::Username(username))?;
-
-        println!("Successfully retrieved user: {:#?}", user);
-
-        Ok(())
-    }
-
-    pub(crate) fn verify_nullifier(
-        nullifier: String,
-        state: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
-        let nullifier_res = client.get_nullifier(nullifier, state)?;
-
-        println!("Successfully retrieved nullifier: {:#?}", nullifier_res);
-
-        Ok(())
-    }
-
-    pub(crate) fn get_notes(username: String) -> Result<(), Box<dyn std::error::Error>> {
-        let client = BlockingHttpClient::new(HttpScheme::Http, "167.172.25.99", Some(80));
-
-        let notes = client.get_notes(username)?;
-
-        println!("Successfully retrieved notes for user: {:#?}", notes);
-        Ok(())
-    }
-
-    pub(crate) fn generate(args: &CreateArgs) -> std::io::Result<()> {
-        println!("{}", "> Generating new key...".blue());
-        let auth = Auth::<Concrete>::generate(&POSEIDON_CFG, &mut OsRng).unwrap();
-        let address = auth.address().short_hex();
-        let pubkey = auth.public_key.clone();
-
-        let smtg_pubkey = ivcnotes::service::SmtgWithPubkey { pubkey };
-        let pubkey_json = serde_json::to_string(&smtg_pubkey).unwrap();
-        println!(
-            "{} {} {} {} {} {}",
-            "> Address:".blue(),
-            auth.address().short_hex().yellow(),
-            "> Pubkey:".blue(),
-            pubkey_json.clone(),
-            "> Username:".blue(),
-            args.username.clone(),
-        );
-        let auth = auth.to_bytes();
-        let auth = encrypt(&auth, args.pass.as_bytes());
-        let creds = Creds {
-            username: args.username.clone(),
-            auth,
-            address: address.clone(),
-            pubkey: pubkey_json,
-        };
-        FileMan::write_creds(&creds)?;
-        FileMan::update_current_address(&address)?;
-        Ok(())
-    }
-}
-
 pub(crate) struct FileMan;
+
+#[derive(Debug)]
+pub(crate) enum Storage {
+    Creds { addr: String },
+    Anchor,
+    VK,
+    PK,
+    AddressBook,
+    Notebook { addr: String },
+}
 
 impl FileMan {
     const APP_DIR: &'static str = ".ivcnotes";
     const CRED_FILE: &'static str = "cred.json";
     const ANCHOR_FILE: &'static str = "anchor";
-    // const PK_FILE: &'static str = "pk.g16";
-    // const VK_FILE: &'static str = "vk.p16";
-    // const PK_DIR: &'static str = "pk";
-    // const VK_DIR: &'static str = "vk";
+    const ADDRESS_BOOK_FILE: &'static str = "address_book.json";
+    const NOTEBOOK_FILE: &'static str = "notes.json";
+    const PK_FILE: &'static str = "pk.g16";
+    const VK_FILE: &'static str = "vk.g16";
 
-    fn dir_app() -> PathBuf {
+    pub(crate) fn dir_app() -> PathBuf {
         let mut dir = Self::dir_home();
         fs::create_dir_all(&dir).unwrap();
         dir.push(Self::APP_DIR);
         dir
     }
 
-    fn dir_home() -> PathBuf {
+    pub(crate) fn dir_home() -> PathBuf {
         std::env::var("HOME")
             .expect("Failed to get HOME directory")
             .into()
     }
 
-    fn path_cred(addr: String) -> PathBuf {
+    fn path(file: &Storage) -> PathBuf {
         let mut dir = Self::dir_app();
-        dir.push(addr);
-        fs::create_dir_all(&dir).unwrap();
-        dir.push(Self::CRED_FILE);
+        match file {
+            Storage::Notebook { addr } => {
+                dir.push(addr);
+                fs::create_dir_all(&dir).unwrap();
+                dir.push(Self::NOTEBOOK_FILE);
+            }
+            Storage::Creds { addr } => {
+                dir.push(addr);
+                fs::create_dir_all(&dir).unwrap();
+                dir.push(Self::CRED_FILE);
+            }
+            Storage::Anchor => dir.push(Self::ANCHOR_FILE),
+            Storage::VK => dir.push(Self::VK_FILE),
+            Storage::PK => dir.push(Self::PK_FILE),
+            Storage::AddressBook => dir.push(Self::ADDRESS_BOOK_FILE),
+        };
         dir
     }
 
-    fn path_anchor() -> PathBuf {
-        let mut dir = Self::dir_app();
-        dir.push(Self::ANCHOR_FILE);
-        dir
+    fn open(file: Storage) -> Result<File, Error> {
+        let path = Self::path(&file);
+        File::open(path).map_err(|_| Error::Data(format!("Failed to open {:?}", file)))
     }
 
-    // fn path_vk() -> PathBuf {
-    //     let mut dir = Self::dir_app();
-    //     dir.push(Self::VK_FILE);
-    //     dir
-    // }
+    fn create(file: Storage) -> Result<File, Error> {
+        let path = Self::path(&file);
+        File::create(path).map_err(|_| Error::Data(format!("Failed to create {:?}", file)))
+    }
 
-    // fn path_pk() -> PathBuf {
-    //     let mut dir = Self::dir_app();
-    //     dir.push(Self::PK_FILE);
-    //     dir
-    // }
-
-    pub(crate) fn update_current_address(address: &str) -> std::io::Result<()> {
-        let file = FileMan::path_anchor();
-        let mut file = File::create(file)?;
-        file.write_all(address.as_bytes())?;
+    pub(crate) fn update_current_account(address: &str) -> Result<(), Error> {
+        let mut file = FileMan::create(Storage::Anchor)?;
+        file.write_all(address.as_bytes())
+            .map_err(|_| Error::Data("Failed to write anchor file".into()))?;
         Ok(())
     }
 
-    pub(crate) fn read_current_address() -> std::io::Result<String> {
-        let file = FileMan::path_anchor();
-        let mut file = File::open(file)?;
+    pub(crate) fn read_current_account() -> Result<String, Error> {
+        let mut file = FileMan::open(Storage::Anchor)?;
         let mut addr = String::new();
-        file.read_to_string(&mut addr)?;
+        file.read_to_string(&mut addr)
+            .map_err(|_| Error::Data("Failed to read anchor file".into()))?;
         Ok(addr)
     }
 
-    pub(crate) fn _read_creds() -> std::io::Result<Creds> {
-        let addr = Self::read_current_address()?;
-        let path = Self::path_cred(addr);
-        let file = File::open(path)?;
+    pub(crate) fn read_creds() -> Result<Creds, Error> {
+        let addr = Self::read_current_account()?;
+        let file = FileMan::open(Storage::Creds { addr })?;
         let reader = BufReader::new(file);
-        serde_json::from_reader(reader).map_err(Into::into)
+        serde_json::from_reader(reader).map_err(|_| Error::Data("Failed to read cred file".into()))
     }
 
-    pub(crate) fn write_creds(creds: &Creds) -> std::io::Result<()> {
-        let path = Self::path_cred(creds.address.clone());
-        let file = File::create(path)?;
+    pub(crate) fn write_creds(creds: &Creds) -> Result<(), Error> {
+        let file = FileMan::create(Storage::Creds {
+            addr: creds.contact.address.short_hex(),
+        })?;
         let writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(writer, &creds).map_err(Into::into)
+        serde_json::to_writer_pretty(writer, &creds)
+            .map_err(|_| Error::Data("Failed to write cred file".into()))
+    }
+
+    pub(crate) fn read_verifier() -> Result<Verifier<Concrete>, Error> {
+        let file = Self::open(Storage::VK)?;
+        let vk = Concrete::read_verifying_key(file)?;
+        Ok(Verifier::new(vk))
+    }
+
+    pub(crate) fn read_prover() -> Result<Prover<Concrete>, Error> {
+        let file = Self::open(Storage::PK)?;
+        let pk = Concrete::read_proving_key(file)?;
+        Ok(Prover::new(pk))
+    }
+
+    pub(crate) fn read_address_book() -> Result<AddressBook, Error> {
+        let book = FileMan::open(Storage::AddressBook)?;
+        serde_json::from_reader(book).map_err(|_| Error::Data("Failed to read address book".into()))
+    }
+
+    pub(crate) fn write_address_book(address_book: &AddressBook) -> Result<(), Error> {
+        let file = FileMan::create(Storage::AddressBook)?;
+        serde_json::to_writer_pretty(file, address_book)
+            .map_err(|_| Error::Data("Failed to write address book".into()))
+    }
+
+    pub(crate) fn read_notebook() -> Result<Notebook, Error> {
+        match Self::read_current_account() {
+            Ok(addr) => {
+                let book = FileMan::open(Storage::Notebook { addr })
+                    .map_err(|e| Error::Data(format!("Failed to open notebook: {}", e)))?;
+                serde_json::from_reader(book)
+                    .map_err(|e| Error::Data(format!("Failed to deserialize notebook: {}", e)))
+            }
+            Err(_) => {
+                // If we can't read the current account, return an empty notebook
+                Ok(Notebook::default())
+            }
+        }
+    }
+
+    pub(crate) fn write_notebook(notebook: &Notebook) -> Result<(), Error> {
+        let addr = Self::read_current_account()?;
+        let file = FileMan::create(Storage::Notebook { addr })?;
+        serde_json::to_writer_pretty(file, notebook)
+            .map_err(|_| Error::Data("Failed to write notebook".into()))
     }
 
     pub(crate) fn clear_contents() -> std::io::Result<()> {
@@ -224,43 +177,12 @@ impl FileMan {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-
             if path.is_dir() {
                 fs::remove_dir_all(&path)?;
             } else {
                 fs::remove_file(&path)?;
             }
         }
-
         Ok(())
     }
-
-    pub(crate) fn list_accounts() {
-        match Self::read_current_address() {
-            Ok(current) => {
-                let path = Self::dir_app();
-                for entry in fs::read_dir(path).unwrap() {
-                    let entry = entry.unwrap();
-                    let path = entry.path();
-                    if path.is_dir() {
-                        let address = path.file_name().unwrap().to_str().unwrap();
-                        let current = if address == current { "current" } else { "" }.blue();
-                        println!(
-                            "{} {}",
-                            path.file_name().unwrap().to_str().unwrap().yellow(),
-                            current
-                        )
-                    }
-                }
-            }
-            Err(_) => println!("{}", "No account.".blue()),
-        }
-    }
-
-    // pub(crate) fn read_vk() -> std::io::Result {
-    //     let path = Self::path_vk();
-    //     let file = File::open(path)?;
-    //     let pk_key_file = File::open("keys/pk.g16").unwrap();
-    //     let _pk = Concrete::read_proving_key(pk_key_file).unwrap();
-    // }
 }

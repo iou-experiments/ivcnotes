@@ -1,15 +1,16 @@
-use crate::schema::UserRegister;
 use crate::schema::{
     CreateUserSchema, IdentifierWrapper, NoteHistoryRequest, NoteHistorySaved, NoteNullifierSchema,
     NullifierRequest, NullifierResponseData, SaveNoteHistoryRequestSchema, User, UserIdentifier,
 };
-
+type TE = ark_ed_on_bn254::EdwardsConfig;
 use ivcnotes::circuit::concrete::Concrete;
 use ivcnotes::service::msg;
+use ivcnotes::service::msg::response::Contact;
+use ivcnotes::service::{SmtgWithAddress, SmtgWithPubkey};
 use ivcnotes::Error;
 use ivcnotes::FWrap;
+use ivcnotes::{Address, PublicKey};
 use reqwest::{Method, Url};
-
 pub enum HttpScheme {
     Http,
     Https,
@@ -22,11 +23,17 @@ enum Path {
     StoreNullifier,
     VerifyNullifier,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Sender {
+    pub username: String,
+}
+
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EncryptedNoteHistory {
-    pub sender: User,
+    pub receiver: User,
     pub encrypted: ivcnotes::cipher::EncryptedData,
 }
 
@@ -47,8 +54,9 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
     req: &Req,
 ) -> Result<Res, Error> {
     let client = reqwest::blocking::Client::new();
-    let json = serde_json::to_string(&req).unwrap();
-    println!("{:#?}", json);
+    let json = serde_json::to_string(req)
+        .map_err(|e| Error::Service(format!("Failed to serialize request: {}", e)))?;
+
     let res = client
         .request(method, url)
         .header("Accept", "*/*")
@@ -56,8 +64,12 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
         .body(json)
         .send()
         .map_err(|e| Error::Service(format!("Failed to send request: {}", e)))?;
-    println!("{:#?}", res);
-    serde_json::from_reader(res)
+
+    let body = res
+        .text()
+        .map_err(|e| Error::Service(format!("Failed to read response body: {}", e)))?;
+
+    serde_json::from_str(&body)
         .map_err(|e| Error::Service(format!("Failed to convert response body: {}", e)))
 }
 
@@ -104,7 +116,7 @@ impl BlockingHttpClient {
             .expect("couldn't get contact");
 
         EncryptedNoteHistory {
-            sender: contact,
+            receiver: contact,
             encrypted: ivcnotes::cipher::EncryptedData { data: nh.data },
         }
     }
@@ -117,7 +129,35 @@ impl BlockingHttpClient {
         Ok(res)
     }
 
-    //todo
+    pub fn get_contact(&self, identifier: UserIdentifier) -> Result<Contact<Concrete>, String> {
+        let user = self.get_user_from_db(identifier).expect("cant fetch user");
+        let address: Address<ark_bn254::Fr> = match user.address {
+            Some(ref address_str) => {
+                let smtg: SmtgWithAddress<ark_bn254::Fr> =
+                    serde_json::from_str(address_str).expect("no address");
+                smtg.address
+            }
+            None => return Err("User address is None".into()),
+        };
+
+        let pubkey: PublicKey<TE> = match user.pubkey {
+            Some(ref pubkey_str) => {
+                println!("string of pubkey, {:#?}", pubkey_str);
+                let smtg: SmtgWithPubkey<TE> = serde_json::from_str(pubkey_str).expect("no pubkey");
+                smtg.pubkey
+            }
+            None => return Err("User pubkey is None".into()),
+        };
+
+        let contact = Contact {
+            public_key: pubkey,
+            address,
+            username: user.username.ok_or("Username is None")?,
+        };
+
+        Ok(contact)
+    }
+
     pub fn store_nullifier(
         &self,
         nullifier: String,
@@ -128,8 +168,8 @@ impl BlockingHttpClient {
             nullifier,
             state,
             owner,
-            step: 1,
-            note: "1".to_owned(),
+            step: 0,
+            note: "".to_owned(),
         };
 
         let url = self.path(Path::StoreNullifier);
@@ -162,16 +202,12 @@ impl BlockingHttpClient {
 
         match send::<_, serde_json::Value>(Method::GET, url, &nullifier_request) {
             Ok(json) => {
-                println!("Response: {:#?}", json);
-
                 if json.get("Ok").is_some() {
                     // This is the case where we have a successful response
-                    Ok("Warning: Betrayal detected, sender was flagged".to_string())
-                } else if json.as_str() == Some("Error") {
+                    panic!("CRITICAL ERROR: Betrayal detected! The sender was flagged. Exiting for your safety.");
+                } else {
                     // This is the case where we have an "Error" string
                     Ok("Nullifier verified, no betrayal detected".to_string())
-                } else {
-                    Err("Unexpected response format".to_string())
                 }
             }
             Err(Error::Service(e)) if e.contains("404 Not Found") => {
@@ -181,11 +217,20 @@ impl BlockingHttpClient {
         }
     }
 
-    pub fn register(&self, msg: UserRegister) -> Result<User, String> {
+    pub fn register(&self, msg: Contact<Concrete>) -> Result<User, String> {
+        let pubkey = msg.public_key.clone();
+        // serialization with crate::serde
+        let smtg_pubkey = SmtgWithPubkey { pubkey };
+        let smtg_address = SmtgWithAddress {
+            address: msg.address,
+        };
+        let pubkey_json = serde_json::to_string(&smtg_pubkey).unwrap();
+        let address_json = serde_json::to_string(&smtg_address).unwrap();
+
         let create_user_schema = CreateUserSchema {
             username: msg.username.clone(),
-            address: msg.address.clone(),
-            pubkey: msg.public_key.clone(),
+            address: address_json,
+            pubkey: pubkey_json,
             nonce: String::new(),
             messages: Vec::new(),
             notes: Vec::new(),
@@ -199,18 +244,18 @@ impl BlockingHttpClient {
         Ok(user)
     }
 
-    //todo
-    pub fn send_note(&self, msg: &msg::request::Note<Concrete>) -> Result<(), Error> {
+    pub fn send_note(&self, msg: &msg::request::SendNote<Concrete>) -> Result<(), Error> {
         let address_bytes = msg.receiver.to_bytes();
         let address_json =
             serde_json::to_string(&address_bytes).expect("failed to serialize address");
 
         let send_and_transfer_json = NoteHistoryRequest {
-            owner_username: None,
-            recipient_username: "user0".to_owned(),
+            owner_username: msg.sender_username.clone(),
+            recipient_username: msg.receiver_username.to_owned(),
             note_history: SaveNoteHistoryRequestSchema {
                 data: msg.note_history.encrypted.data.clone(),
                 address: address_json,
+                sender: msg.sender_username.clone(),
             },
             message: "Transfer".to_string(),
         };
@@ -219,22 +264,31 @@ impl BlockingHttpClient {
         send(Method::POST, url, &send_and_transfer_json)
     }
 
-    pub fn get_notes(&self, username: String) -> Result<Notes, String> {
+    pub fn get_notes(
+        &self,
+        username: String,
+    ) -> Result<Vec<(EncryptedNoteHistory, Sender)>, String> {
         let username_request = crate::schema::UsernameRequest {
             username: username.clone(),
         };
-
         let url = self.path(Path::GetNoteHistoryForUser);
         let note_history: Vec<NoteHistorySaved> = send(Method::GET, url, &username_request)
             .map_err(|e| format!("Failed to get notes: {}", e))?;
 
-        let encrypted_note_history: Vec<EncryptedNoteHistory> = note_history
+        let result: Vec<(EncryptedNoteHistory, Sender)> = note_history
             .into_iter()
-            .map(|nh| self.convert_note_history_to_encrypted_note_history(nh, "user0".to_owned()))
+            .map(|nh| {
+                let encrypted_note_history = self.convert_note_history_to_encrypted_note_history(
+                    nh.clone(),
+                    username.to_owned(),
+                );
+                let sender = Sender {
+                    username: nh.sender,
+                };
+                (encrypted_note_history, sender)
+            })
             .collect();
 
-        Ok(Notes {
-            notes: encrypted_note_history,
-        })
+        Ok(result)
     }
 }

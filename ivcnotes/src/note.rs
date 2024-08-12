@@ -51,22 +51,22 @@ impl From<NoteOutIndex> for u8 {
 pub struct Note<F: PrimeField> {
     // asset hash defines context of the note tree
     #[serde(with = "crate::ark_serde")]
-    pub(crate) asset_hash: AssetHash<F>,
+    pub asset_hash: AssetHash<F>,
     // spend authority
     #[serde(with = "crate::ark_serde")]
-    pub(crate) owner: Address<F>,
+    pub owner: Address<F>,
     // numerical value of the note & asset
-    pub(crate) value: u64,
+    pub value: u64,
     // depth in the ivc tree (note tree)
-    pub(crate) step: u32,
+    pub step: u32,
     // previous note hash
     #[serde(with = "crate::ark_serde")]
-    pub(crate) parent_note: BlindNoteHash<F>,
+    pub parent_note: BlindNoteHash<F>,
     // output index
-    pub(crate) out_index: NoteOutIndex,
+    pub out_index: NoteOutIndex,
     // blinding factor
     #[serde(with = "crate::ark_serde")]
-    pub(crate) blind: Blind<F>,
+    pub blind: Blind<F>,
 }
 
 impl<F: PrimeField + Absorb> Note<F> {
@@ -104,7 +104,7 @@ pub struct IVCStep<E: IVC> {
     pub(crate) nullifier: Nullifier<E::Field>,
     // previous owner, signer of the input note or issuer
     #[serde(with = "crate::ark_serde")]
-    pub(crate) sender: Address<E::Field>,
+    pub sender: Address<E::Field>,
 }
 
 impl<E: IVC> std::fmt::Debug for IVCStep<E> {
@@ -137,14 +137,14 @@ impl<E: IVC> IVCStep<E> {
 #[serde(bound = "E: IVC")]
 pub struct NoteHistory<E: IVC> {
     // asset that defines the terms and issuer]
-    pub(crate) asset: Asset<E::Field>,
+    pub asset: Asset<E::Field>,
     // part of intermediate public inputs
-    pub(crate) steps: Vec<IVCStep<E>>,
+    pub steps: Vec<IVCStep<E>>,
     // unspent note
-    pub(crate) current_note: Note<E::Field>,
+    pub current_note: Note<E::Field>,
     // sibling of unspent note
     #[serde(with = "crate::ark_serde")]
-    pub(crate) sibling: BlindNoteHash<E::Field>,
+    pub sibling: BlindNoteHash<E::Field>,
 }
 
 impl<E: IVC> NoteHistory<E> {
@@ -189,6 +189,6 @@ impl<E: IVC> NoteHistory<E> {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "E: IVC")]
 pub struct EncryptedNoteHistory<E: IVC> {
-    pub sender: Contact<E>,
+    pub receiver: Contact<E>,
     pub encrypted: EncryptedData,
 }

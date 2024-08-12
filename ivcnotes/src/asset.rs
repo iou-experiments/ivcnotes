@@ -4,11 +4,16 @@ use digest::Digest;
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(u64)]
+pub enum Unit {
+    USD = 0,
+}
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Asset<F: PrimeField> {
     #[serde(with = "crate::ark_serde")]
     pub(crate) issuer: Address<F>,
-    pub(crate) terms: Terms,
+    pub terms: Terms,
 }
 
 impl<F: PrimeField> Asset<F> {
@@ -30,11 +35,11 @@ impl<F: PrimeField> Asset<F> {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Terms {
-    IOU { maturity: u64, unit: u64 },
+    IOU { maturity: u64, unit: Unit },
 }
 
 impl Terms {
-    pub fn iou(maturity: u64, unit: u64) -> Self {
+    pub fn iou(maturity: u64, unit: Unit) -> Self {
         Terms::IOU { maturity, unit }
     }
 
@@ -43,7 +48,7 @@ impl Terms {
             Terms::IOU { maturity, unit } => {
                 let mut bytes = vec![];
                 bytes.extend_from_slice(&maturity.to_le_bytes());
-                bytes.extend_from_slice(&unit.to_le_bytes());
+                bytes.extend_from_slice(&(unit as u64).to_le_bytes());
                 bytes
             }
         }
