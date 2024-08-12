@@ -43,7 +43,7 @@ impl Creds {
         Auth::new(&POSEIDON_CFG, auth.try_into().unwrap())
     }
 
-    pub(crate) fn contact(&self) -> Contact<Concrete> {
-        self.contact.clone()
-    }
+    // pub(crate) fn contact(&self) -> Contact<Concrete> {
+    //     self.contact.clone()
+    // }
 }

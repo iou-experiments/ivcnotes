@@ -189,6 +189,6 @@ impl<E: IVC> NoteHistory<E> {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "E: IVC")]
 pub struct EncryptedNoteHistory<E: IVC> {
-    pub sender: Contact<E>,
+    pub receiver: Contact<E>,
     pub encrypted: EncryptedData,
 }

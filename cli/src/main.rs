@@ -67,6 +67,7 @@ struct RegisterArgs {
 struct IssueArgs {
     #[arg(short, long, default_value = "")]
     pass: String,
+    from: String,
     receiver: String,
     value: u64,
 }
@@ -136,16 +137,26 @@ impl Cli {
         args: &ReadNotesArgs,
         service: &BlockingHttpClient,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut creds = FileMan::read_creds().unwrap();
-        creds.contact.username = args.username.clone();
+        let creds = FileMan::read_creds().unwrap();
         let auth = creds.auth(&args.pass)?;
-        println!("got auth");
-        let encrypted = service.get_notes(creds.contact.username.clone())?;
-        for encrypted_note in encrypted.notes {
-            // Decrypt the note  TODO idk how to decrypt this hit a wall
+
+        let encrypted = service.get_notes(args.username.clone())?;
+
+        for (encrypted_note, sender) in encrypted {
+            // Extract sender information
+            println!("sender, {:#?}", sender);
+
+            let msg = service::schema::UserIdentifier::Username(sender.username.clone());
+
+            println!("debugger, {:#?}", msg);
+
+            let contact = service.get_contact(msg).expect("couldn't get contact");
+
+            // Decrypt the note using the public key from the contact
             let decrypted_note: NoteHistory<Concrete> = auth
-                .decrypt(&auth.public_key, &encrypted_note.encrypted)
+                .decrypt(&contact.public_key, &encrypted_note.encrypted)
                 .expect("couldn't decrypt");
+
             // Add the decrypted note to the notebook
             Notebook::add_note(decrypted_note)?;
         }
@@ -182,7 +193,6 @@ impl Cli {
     ) -> Result<(), Error> {
         let creds = FileMan::read_creds()?;
         let auth: ivcnotes::id::Auth<Concrete> = creds.auth(&args.pass)?;
-
         let w = wallet(&args.pass)?;
         let receiver = self.get_contact(args.receiver.clone(), service)?;
         let notes = Notebook::get_notes()?;
@@ -203,9 +213,11 @@ impl Cli {
         let nullifier_str = sealed.nullifier().to_string();
         // Combine the strings
         let combined_str = format!("{}{}", note_0_str, note_1_str);
+        // Verify nullifier, if found betrayal panic
         let _ = service
             .get_nullifier(nullifier_str.clone(), combined_str.clone())
-            .expect("hm");
+            .expect("we failed to verify the nullifier.");
+        // If no nullifier/state combo continue to store to prevent future betrayal
         let _ = service
             .store_nullifier(nullifier_str, combined_str, args.from.clone())
             .map_err(|e| (format!("Failed to store nullifier: {}", e)));
@@ -214,10 +226,11 @@ impl Cli {
         let msg = msg::request::SendNote {
             note_history: EncryptedNoteHistory {
                 encrypted,
-                sender: creds.contact(),
+                receiver: receiver.clone(),
             },
             receiver: receiver.address,
             receiver_username: args.receiver.clone(),
+            sender_username: args.from.clone(),
         };
 
         let _ = service
@@ -244,11 +257,13 @@ impl Cli {
         let msg = msg::request::SendNote {
             note_history: EncryptedNoteHistory {
                 encrypted,
-                sender: creds.contact(),
+                receiver: receiver.clone(),
             },
             receiver: receiver.address,
             receiver_username: args.receiver.clone(),
+            sender_username: args.from.clone(),
         };
+
         let _ = service
             .send_note(&msg)
             .map_err(|e| (format!("Failed to send note: {}", e)));

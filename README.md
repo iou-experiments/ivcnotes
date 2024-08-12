@@ -283,10 +283,10 @@ notes switch
 notes register --pass 17 --user 0xsero 
 ```
 
-5. Issue a note (password, receiver, value)
+5. Issue a note (password, sender_username, receiver_username, value)
 
 ```bash
-notes issue --pass 17 0xsero 100
+notes issue --pass 17 from to 100
 ```
 
 6. Get and store notes (password, username)
@@ -298,7 +298,7 @@ notes notes --pass 1 sero
 7. Split and transfer a note (password, from, note index, to, amount)
 
 ```bash
-notes transfer --pass 17 --from 0xsero 0 sero 25 
+notes transfer --pass 17 --from from 0 to 25 
 ```
 
 

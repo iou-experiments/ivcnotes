@@ -53,6 +53,7 @@ pub mod msg {
             #[serde(with = "crate::ark_serde")]
             pub receiver: Address<E::Field>,
             pub receiver_username: String,
+            pub sender_username: String,
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -23,11 +23,17 @@ enum Path {
     StoreNullifier,
     VerifyNullifier,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Sender {
+    pub username: String,
+}
+
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EncryptedNoteHistory {
-    pub sender: User,
+    pub receiver: User,
     pub encrypted: ivcnotes::cipher::EncryptedData,
 }
 
@@ -112,7 +118,7 @@ impl BlockingHttpClient {
             .expect("couldn't get contact");
 
         EncryptedNoteHistory {
-            sender: contact,
+            receiver: contact,
             encrypted: ivcnotes::cipher::EncryptedData { data: nh.data },
         }
     }
@@ -246,11 +252,12 @@ impl BlockingHttpClient {
             serde_json::to_string(&address_bytes).expect("failed to serialize address");
 
         let send_and_transfer_json = NoteHistoryRequest {
-            owner_username: None,
+            owner_username: msg.sender_username.clone(),
             recipient_username: msg.receiver_username.to_owned(),
             note_history: SaveNoteHistoryRequestSchema {
                 data: msg.note_history.encrypted.data.clone(),
                 address: address_json,
+                sender: msg.sender_username.clone(),
             },
             message: "Transfer".to_string(),
         };
@@ -259,21 +266,33 @@ impl BlockingHttpClient {
         send(Method::POST, url, &send_and_transfer_json)
     }
 
-    pub fn get_notes(&self, username: String) -> Result<Notes, String> {
+    pub fn get_notes(
+        &self,
+        username: String,
+    ) -> Result<Vec<(EncryptedNoteHistory, Sender)>, String> {
         let username_request = crate::schema::UsernameRequest {
             username: username.clone(),
         };
-        println!("1");
         let url = self.path(Path::GetNoteHistoryForUser);
         let note_history: Vec<NoteHistorySaved> = send(Method::GET, url, &username_request)
             .map_err(|e| format!("Failed to get notes: {}", e))?;
-        let encrypted_note_history: Vec<EncryptedNoteHistory> = note_history
+
+        println!("note history, {:#?}", note_history);
+
+        let result: Vec<(EncryptedNoteHistory, Sender)> = note_history
             .into_iter()
-            .map(|nh| self.convert_note_history_to_encrypted_note_history(nh, "user0".to_owned()))
+            .map(|nh| {
+                let encrypted_note_history = self.convert_note_history_to_encrypted_note_history(
+                    nh.clone(),
+                    username.to_owned(),
+                );
+                let sender = Sender {
+                    username: nh.sender,
+                };
+                (encrypted_note_history, sender)
+            })
             .collect();
 
-        Ok(Notes {
-            notes: encrypted_note_history,
-        })
+        Ok(result)
     }
 }
