@@ -1,3 +1,71 @@
+## How to use
+
+Make sure you have Rust & cargo on your system, clone the repo
+then install
+
+```bash
+./install.sh
+```
+### Commands
+
+1. Create account (pass can be anything)
+
+```bash
+cargo run create --pass 0
+```
+
+2. View accounts
+
+```bash
+notes info
+```
+
+3. View and Switch between accounts
+
+```bash
+notes switch   
+```
+
+then you can select an account to switch to, it is 1 to however many accounts you have just put the index
+
+4. Register account with service (password, unique username)
+
+```bash
+notes register --pass 0 --user sero 
+```
+
+5. Issue a note (password, receiver_username, value)
+
+```bash
+notes issue --pass 0 --to armanc --value 1000  
+```
+
+6. Get and store notes (password)
+
+```bash
+notes notes --pass 0
+```
+
+7. View your notes
+
+```bash
+notes list
+```
+
+8. Split and transfer a note (password, note index, to username, amount)
+
+```bash
+notes transfer --pass 0 --index 0 --to armanc --value 450
+```
+
+
+8. Wipe and Reset
+
+```bash
+notes reset
+```
+
+
 # IOU - ivcnotes: Privacy-Preserving Note Transfer System
 
 ivcnotes is an advanced cryptographic system that enables private issuance and transfer of digital notes using incremental verifiable computation (IVC) and zero-knowledge proofs.
@@ -243,67 +311,5 @@ While Multi-Party Computation offers promising benefits, it's important to ackno
    - **Complexity for End-Users**: MPC might add another layer of complexity to the system, potentially impacting user experience and adoption.
    - **Increased Transaction Times**: The additional computation and communication required by MPC could lead to longer transaction confirmation times.
 
-## How to use
-
-Make sure you have Rust & cargo on your system, clone the repo
-
-```bash
-cargo run --example keygen --release
-```
-
-then install
-
-```bash
-./install.sh
-```
-
-### Commands
-
-1. Create account
-
-```bash
-cargo run create --pass 0
-```
-
-2. View accounts
-
-```bash
-notes info
-```
-
-3. View and Switch between accounts
-
-```bash
-notes switch   
-```
-
-4. Register account with service (password, unique username)
-
-```bash
-notes register --pass 17 --user 0xsero 
-```
-
-5. Issue a note (password, sender_username, receiver_username, value)
-
-```bash
-notes issue --pass 17 from to 100
-```
-
-6. Get and store notes (password, username)
-
-```bash
-notes notes --pass 1 sero  
-```
-
-7. Split and transfer a note (password, from, note index, to, amount)
-
-```bash
-notes transfer --pass 17 --from from 0 to 25 
-```
 
 
-8. Wipe and Reset
-
-```bash
-notes reset
-```
