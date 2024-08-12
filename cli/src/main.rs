@@ -52,7 +52,6 @@ struct CreateArgs {
 struct ReadNotesArgs {
     #[arg(short, long, default_value = "")]
     pass: String,
-    username: String,
 }
 
 #[derive(Args)]
@@ -67,8 +66,9 @@ struct RegisterArgs {
 struct IssueArgs {
     #[arg(short, long, default_value = "")]
     pass: String,
-    from: String,
+    #[arg(short, long = "to")]
     receiver: String,
+    #[arg(short, long = "value")]
     value: u64,
 }
 
@@ -76,10 +76,11 @@ struct IssueArgs {
 struct TransferArgs {
     #[arg(short, long, default_value = "")]
     pass: String,
-    #[arg(short, long = "from")]
-    from: String,
+    #[arg(short, long = "index")]
     index: usize,
+    #[arg(short, long = "to")]
     receiver: String,
+    #[arg(short, long = "value")]
     value: u64,
 }
 
@@ -140,7 +141,7 @@ impl Cli {
         let creds = FileMan::read_creds().unwrap();
         let auth = creds.auth(&args.pass)?;
 
-        let encrypted = service.get_notes(args.username.clone())?;
+        let encrypted = service.get_notes(creds.contact.username.clone())?;
 
         for (encrypted_note, sender) in encrypted {
             // Extract sender information
@@ -219,7 +220,7 @@ impl Cli {
             .expect("we failed to verify the nullifier.");
         // If no nullifier/state combo continue to store to prevent future betrayal
         let _ = service
-            .store_nullifier(nullifier_str, combined_str, args.from.clone())
+            .store_nullifier(nullifier_str, combined_str, creds.contact.username.clone())
             .map_err(|e| (format!("Failed to store nullifier: {}", e)));
 
         let encrypted = auth.encrypt(&receiver.public_key, &note_1);
@@ -230,7 +231,7 @@ impl Cli {
             },
             receiver: receiver.address,
             receiver_username: args.receiver.clone(),
-            sender_username: args.from.clone(),
+            sender_username: creds.contact.username.clone(),
         };
 
         let _ = service
@@ -261,7 +262,7 @@ impl Cli {
             },
             receiver: receiver.address,
             receiver_username: args.receiver.clone(),
-            sender_username: args.from.clone(),
+            sender_username: creds.contact.username.clone(),
         };
 
         let _ = service
@@ -300,7 +301,7 @@ impl Cli {
         let mut accounts = Vec::new();
 
         println!("Available accounts:");
-        for (index, entry) in fs::read_dir(path).expect("1").enumerate() {
+        for entry in fs::read_dir(path).expect("1") {
             let path = entry.expect("2").path();
             if path.is_dir() {
                 if let Some(address) = path.file_name() {
@@ -311,12 +312,7 @@ impl Cli {
                         } else {
                             "".into()
                         };
-                        println!(
-                            "{}. {}{}",
-                            index + 1,
-                            address_str.yellow(),
-                            current_indicator
-                        );
+                        println!("{}{}", address_str.yellow(), current_indicator);
                         accounts.push(address_str.to_string());
                     }
                 }

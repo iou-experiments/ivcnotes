@@ -137,14 +137,14 @@ impl<E: IVC> IVCStep<E> {
 #[serde(bound = "E: IVC")]
 pub struct NoteHistory<E: IVC> {
     // asset that defines the terms and issuer]
-    pub(crate) asset: Asset<E::Field>,
+    pub asset: Asset<E::Field>,
     // part of intermediate public inputs
     pub steps: Vec<IVCStep<E>>,
     // unspent note
     pub current_note: Note<E::Field>,
     // sibling of unspent note
     #[serde(with = "crate::ark_serde")]
-    pub(crate) sibling: BlindNoteHash<E::Field>,
+    pub sibling: BlindNoteHash<E::Field>,
 }
 
 impl<E: IVC> NoteHistory<E> {
