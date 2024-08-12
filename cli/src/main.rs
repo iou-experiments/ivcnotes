@@ -123,13 +123,19 @@ impl Cli {
         username: String,
         service: &BlockingHttpClient,
     ) -> Result<Contact<Concrete>, Error> {
+        println!("Checking if contact is in your address book...");
         let contact = AddressBook::get_contract(username.clone())?;
         match contact {
             Some(contact) => Ok(contact),
             None => {
+                println!(
+                    "No contact found for {}, checking database...",
+                    username.clone()
+                );
                 let msg = service::schema::UserIdentifier::Username(username.clone());
                 let contact = service.get_contact(msg).expect("couldnt get contact");
                 AddressBook::add_contact(username, &contact)?;
+                println!("Found contact in database and saved to your address book!");
                 Ok(contact)
             }
         }
@@ -141,18 +147,16 @@ impl Cli {
         service: &BlockingHttpClient,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let creds = FileMan::read_creds().unwrap();
+        println!(
+            "preparing to fetch notes for {}...",
+            creds.contact.username.clone()
+        );
         let auth = creds.auth(&args.pass)?;
 
         let encrypted = service.get_notes(creds.contact.username.clone())?;
-
+        println!("Fetched encrypted notes, preparing to decrypt...",);
         for (encrypted_note, sender) in encrypted {
-            // Extract sender information
-            println!("sender, {:#?}", sender);
-
             let msg = service::schema::UserIdentifier::Username(sender.username.clone());
-
-            println!("debugger, {:#?}", msg);
-
             let contact = service.get_contact(msg).expect("couldn't get contact");
 
             // Decrypt the note using the public key from the contact
@@ -162,6 +166,7 @@ impl Cli {
 
             // Add the decrypted note to the notebook
             Notebook::add_note(decrypted_note)?;
+            println!("Decrypted notes and saved in your notebook, use list command to view!");
         }
 
         Ok(())
@@ -184,20 +189,25 @@ impl Cli {
         args: &RegisterArgs,
         s: &BlockingHttpClient,
     ) -> Result<(), Error> {
+        println!("Preparing for registeration...");
         let mut creds = FileMan::read_creds().unwrap();
         creds.contact.username = args.username.clone();
+        println!("Checking if username can be registered...");
         s.register(creds.contact.clone())
             .expect("failed to register user");
         FileMan::write_creds(&creds)?;
+        println!("Username, {} registered!", args.username.clone());
         Ok(())
     }
 
     pub(crate) fn create(&self, args: &CreateArgs) -> Result<(), Error> {
+        println!("Creating your credentials...");
         let creds: Creds = Creds::generate(&args.pass);
         FileMan::write_creds(&creds)?;
         FileMan::update_current_account(&creds.contact.address.short_hex())?;
         AddressBook::create()?;
         Notebook::create()?;
+        println!("Your credentials have been created and saved...");
         Ok(())
     }
 
@@ -206,6 +216,7 @@ impl Cli {
         args: &TransferArgs,
         service: &BlockingHttpClient,
     ) -> Result<(), Error> {
+        println!("Preparing note for transfer...");
         let creds = FileMan::read_creds()?;
         let auth: ivcnotes::id::Auth<Concrete> = creds.auth(&args.pass)?;
         let w = wallet(&args.pass)?;
@@ -213,31 +224,33 @@ impl Cli {
         let notes = Notebook::get_notes()?;
         let note = notes[args.index].clone();
 
+        println!("Splitting note...");
         // store nullifier for verification.
         let (note_0, note_1, sealed) = w.split(&mut OsRng, &auth, note, args.value, &receiver)?;
-        let note_0_str = format!(
-            "Current Note: {:?}, Steps: {}",
+
+        let nullifier_str = sealed.nullifier().to_string();
+        let combined_str = format!(
+            "Current Note: {:?}, Steps: {}Current Note: {:?}, Steps: {}",
             note_0.current_note,
-            note_0.steps.len()
-        );
-        let note_1_str = format!(
-            "Current Note: {:?}, Steps: {}",
+            note_0.steps.len(),
             note_1.current_note,
             note_1.steps.len()
         );
-        let nullifier_str = sealed.nullifier().to_string();
-        // Combine the strings
-        let combined_str = format!("{}{}", note_0_str, note_1_str);
-        // Verify nullifier, if found betrayal panic
-        let _ = service
-            .get_nullifier(nullifier_str.clone(), combined_str.clone())
-            .expect("we failed to verify the nullifier.");
-        // If no nullifier/state combo continue to store to prevent future betrayal
-        let _ = service
-            .store_nullifier(nullifier_str, combined_str, creds.contact.username.clone())
-            .map_err(|e| (format!("Failed to store nullifier: {}", e)));
 
+        println!("Verifying transaction integrity...");
+        service
+            .get_nullifier(nullifier_str.clone(), combined_str.clone())
+            .expect("Failed to verify the nullifier.");
+
+        println!("Storing transaction record...");
+        service
+            .store_nullifier(nullifier_str, combined_str, creds.contact.username.clone())
+            .expect("Failed to store the nullifier.");
+
+        println!("Encrypting note for receiver...");
         let encrypted = auth.encrypt(&receiver.public_key, &note_1);
+
+        println!("Sending note to receiver...");
         let msg = msg::request::SendNote {
             note_history: EncryptedNoteHistory {
                 encrypted,
@@ -251,7 +264,11 @@ impl Cli {
         let _ = service
             .send_note(&msg)
             .map_err(|e| (format!("Failed to send note: {}", e)));
+
+        println!("Updating notebook...");
         Notebook::update_note(args.index, note_0)?;
+
+        println!("Transfer completed successfully!");
         Ok(())
     }
 
@@ -261,12 +278,18 @@ impl Cli {
         service: &BlockingHttpClient,
     ) -> Result<(), Error> {
         let creds = FileMan::read_creds()?;
+        println!(
+            "Preparing to issue note with a value of {} to {}",
+            args.value.clone(),
+            args.receiver.clone()
+        );
         let auth = creds.auth(&args.pass)?;
 
         let w = wallet(&args.pass)?;
         let receiver = self.get_contact(args.receiver.clone(), service)?;
         let terms = Terms::iou(0, ivcnotes::asset::Unit::USD);
         let note = w.issue(&mut OsRng, &auth, &terms, args.value, &receiver)?;
+        println!("Encrypting note and preparing to transfer...");
         let encrypted = auth.encrypt(&receiver.public_key, &note);
 
         let msg = msg::request::SendNote {
@@ -282,8 +305,7 @@ impl Cli {
         let _ = service
             .send_note(&msg)
             .map_err(|e| (format!("Failed to send note: {}", e)));
-
-        Notebook::add_note(note)?;
+        println!("Issued note successfully.");
         Ok(())
     }
 

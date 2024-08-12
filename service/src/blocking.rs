@@ -56,7 +56,6 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
     let client = reqwest::blocking::Client::new();
     let json = serde_json::to_string(req)
         .map_err(|e| Error::Service(format!("Failed to serialize request: {}", e)))?;
-    println!("Request JSON: {:#?}", json);
 
     let res = client
         .request(method, url)
@@ -69,7 +68,6 @@ fn send<Req: serde::Serialize, Res: for<'de> serde::Deserialize<'de>>(
     let body = res
         .text()
         .map_err(|e| Error::Service(format!("Failed to read response body: {}", e)))?;
-    println!("Response body: {}", body);
 
     serde_json::from_str(&body)
         .map_err(|e| Error::Service(format!("Failed to convert response body: {}", e)))
@@ -276,8 +274,6 @@ impl BlockingHttpClient {
         let url = self.path(Path::GetNoteHistoryForUser);
         let note_history: Vec<NoteHistorySaved> = send(Method::GET, url, &username_request)
             .map_err(|e| format!("Failed to get notes: {}", e))?;
-
-        println!("note history, {:#?}", note_history);
 
         let result: Vec<(EncryptedNoteHistory, Sender)> = note_history
             .into_iter()
