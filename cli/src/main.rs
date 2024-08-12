@@ -36,10 +36,11 @@ enum Commands {
     Register(RegisterArgs),
     Issue(IssueArgs),
     Transfer(TransferArgs),
-    Notes(ReadNotesArgs),
+    Get(ReadNotesArgs),
     Info,
     Reset,
     Switch,
+    List,
 }
 
 #[derive(Args)]
@@ -109,9 +110,10 @@ fn main() {
         Commands::Register(args) => cli.register(args, &service).unwrap(),
         Commands::Issue(args) => cli.issue(args, &service).unwrap(),
         Commands::Transfer(args) => cli.transfer(args, &service).unwrap(),
-        Commands::Notes(args) => cli.get_notes(args, &service).unwrap(),
+        Commands::Get(args) => cli.get_notes(args, &service).unwrap(),
         Commands::Reset => FileMan::clear_contents().unwrap(),
         Commands::Switch => cli.list_and_switch_accounts(),
+        Commands::List => cli.list_all_notes().unwrap(),
     }
 }
 
@@ -160,6 +162,18 @@ impl Cli {
 
             // Add the decrypted note to the notebook
             Notebook::add_note(decrypted_note)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn list_all_notes(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Listing all notes in the notebook:");
+        println!("----------------------------------");
+
+        match Notebook::list_notes() {
+            Ok(_) => println!("All notes listed successfully."),
+            Err(e) => println!("Error listing notes: {:?}", e),
         }
 
         Ok(())

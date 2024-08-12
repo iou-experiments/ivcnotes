@@ -13,7 +13,7 @@ pub enum Unit {
 pub struct Asset<F: PrimeField> {
     #[serde(with = "crate::ark_serde")]
     pub(crate) issuer: Address<F>,
-    pub(crate) terms: Terms,
+    pub terms: Terms,
 }
 
 impl<F: PrimeField> Asset<F> {

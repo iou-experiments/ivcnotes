@@ -1,4 +1,5 @@
 use crate::files::FileMan;
+use ivcnotes::asset::Terms;
 use ivcnotes::Error;
 use ivcnotes::{circuit::concrete::Concrete, note::NoteHistory};
 use serde_derive::{Deserialize, Serialize};
@@ -49,5 +50,29 @@ impl Notebook {
         }
 
         Ok(false)
+    }
+
+    pub(crate) fn list_notes() -> Result<(), Error> {
+        let notes = Self::get_notes()?;
+
+        for (index, note) in notes.iter().enumerate() {
+            let asset_type = match &note.asset.terms {
+                Terms::IOU { unit, .. } => unit,
+                // Add other asset types here if needed
+            };
+
+            let value = note.current_note.value;
+            let step = note.current_note.step;
+            let sender = &note.steps.last().unwrap().sender;
+
+            println!("Note {}", index);
+            println!("  Asset Type: {:#?}", asset_type);
+            println!("  Value: {}", value);
+            println!("  Step: {}", step);
+            println!("  Sender: {:#?}", sender);
+            println!();
+        }
+
+        Ok(())
     }
 }
