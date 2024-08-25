@@ -25,15 +25,31 @@ pub trait IVC: Clone {
     fn read_proving_key<R: Read>(
         reader: R,
     ) -> Result<<Self::Snark as SNARK<Self::Field>>::ProvingKey, crate::Error> {
-        <Self::Snark as SNARK<Self::Field>>::ProvingKey::deserialize_compressed(reader)
+        <Self::Snark as SNARK<Self::Field>>::ProvingKey::deserialize_uncompressed(reader)
             .map_err(|e| crate::Error::Data(format!("proving key deserialization failed: {}", e)))
     }
 
     fn read_verifying_key<R: Read>(
         reader: R,
     ) -> Result<<Self::Snark as SNARK<Self::Field>>::VerifyingKey, crate::Error> {
-        <Self::Snark as SNARK<Self::Field>>::VerifyingKey::deserialize_compressed(reader)
+        <Self::Snark as SNARK<Self::Field>>::VerifyingKey::deserialize_uncompressed(reader)
             .map_err(|e| crate::Error::Data(format!("verifying key deserialization failed: {}", e)))
+    }
+
+    fn read_proving_key_unchecked<R: Read>(
+        reader: R,
+    ) -> Result<<Self::Snark as SNARK<Self::Field>>::ProvingKey, crate::Error> {
+        <Self::Snark as SNARK<Self::Field>>::ProvingKey::deserialize_uncompressed_unchecked(reader)
+            .map_err(|e| crate::Error::Data(format!("proving key deserialization failed: {}", e)))
+    }
+
+    fn read_verifying_key_unchecked<R: Read>(
+        reader: R,
+    ) -> Result<<Self::Snark as SNARK<Self::Field>>::VerifyingKey, crate::Error> {
+        <Self::Snark as SNARK<Self::Field>>::VerifyingKey::deserialize_uncompressed_unchecked(
+            reader,
+        )
+        .map_err(|e| crate::Error::Data(format!("verifying key deserialization failed: {}", e)))
     }
 }
 

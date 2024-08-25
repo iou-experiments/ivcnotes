@@ -7,7 +7,6 @@ type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
 // some taken from https://github.com/Mach-34/Grapevine
-
 struct AesKey {
     key: [u8; 16],
     iv: [u8; 16],

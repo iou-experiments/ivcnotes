@@ -4,7 +4,9 @@ use crate::{
 };
 use ark_crypto_primitives::{snark::SNARK, sponge::Absorb};
 use ark_ff::PrimeField;
+use digest::Digest;
 use serde_derive::{Deserialize, Serialize};
+use sha2::Sha256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum NoteOutIndex {
@@ -147,6 +149,14 @@ pub struct NoteHistory<E: IVC> {
     pub(crate) sibling: BlindNoteHash<E::Field>,
 }
 
+impl<E: IVC> PartialEq for NoteHistory<E> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash() == other.hash()
+    }
+}
+
+impl<E: IVC> Eq for NoteHistory<E> {}
+
 impl<E: IVC> NoteHistory<E> {
     pub fn new(
         h: &PoseidonConfigs<E::Field>,
@@ -165,6 +175,10 @@ impl<E: IVC> NoteHistory<E> {
         }
     }
 
+    pub fn asset(&self) -> &Asset<E::Field> {
+        &self.asset
+    }
+
     pub fn owner(&self) -> &Address<E::Field> {
         &self.current_note.owner
     }
@@ -177,12 +191,37 @@ impl<E: IVC> NoteHistory<E> {
         &self.sibling
     }
 
+    pub fn value(&self) -> u64 {
+        self.current_note.value
+    }
+
+    pub fn signers(&self) -> Vec<Address<E::Field>> {
+        self.steps.iter().map(|s| s.sender).collect()
+    }
+
+    pub fn issuer(&self) -> &Address<E::Field> {
+        &self.asset.issuer
+    }
+
     pub fn state(&self, h: &PoseidonConfigs<E::Field>) -> StateHash<E::Field> {
         let (_, blind_note_hash) = h.note(&self.current_note);
         match self.current_note.out_index {
             NoteOutIndex::Out0 => h.state(&blind_note_hash, &self.sibling),
             NoteOutIndex::Out1 => h.state(&self.sibling, &blind_note_hash),
         }
+    }
+
+    pub fn hash(&self) -> [u8; 32] {
+        let bytes = self.to_bytes();
+        Sha256::digest(bytes).into()
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self).unwrap()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        bincode::deserialize(bytes).unwrap()
     }
 }
 

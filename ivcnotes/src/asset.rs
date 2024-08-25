@@ -31,11 +31,16 @@ impl<F: PrimeField> Asset<F> {
             .finalize();
         AssetHash::reduce_bytes(bytes.as_ref())
     }
+
+    pub fn issuer(&self) -> &Address<F> {
+        &self.issuer
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Terms {
     IOU { maturity: u64, unit: Unit },
+    Open,
 }
 
 impl Terms {
@@ -51,6 +56,7 @@ impl Terms {
                 bytes.extend_from_slice(&(unit as u64).to_le_bytes());
                 bytes
             }
+            Terms::Open => vec![0u8; 16],
         }
     }
 }

@@ -10,7 +10,6 @@ pub mod circuit;
 pub mod id;
 pub mod note;
 pub mod poseidon;
-pub mod pretty;
 pub mod service;
 pub mod tx;
 pub mod wallet;
@@ -30,19 +29,13 @@ crate::field_wrap!(BlindNoteHash);
 pub enum Error {
     Custom(String),
     Data(String),
-    External(String),
     Verify(String),
-    Service(String),
 }
 
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         let string = match self {
-            Self::Custom(s)
-            | Self::Data(s)
-            | Self::External(s)
-            | Self::Verify(s)
-            | Self::Service(s) => s.clone(),
+            Self::Custom(s) | Self::Data(s) | Self::Verify(s) => s.clone(),
         };
         write!(f, "{}", string)
     }
@@ -69,7 +62,13 @@ pub trait FWrap<F: ark_ff::PrimeField>: From<F> + AsRef<F> + Clone + Copy {
     }
 
     fn to_string(&self) -> String {
-        self.inner().to_string()
+        let bytes = self.to_bytes();
+        hex::encode(bytes)
+    }
+
+    fn from_string(str: String) -> Result<Self, Box<dyn ark_std::error::Error>> {
+        let bytes = hex::decode(str).map_err(|_| Error::Data("Invalid hex string".to_string()))?;
+        Self::from_bytes(&bytes)
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, Box<dyn ark_std::error::Error>> {

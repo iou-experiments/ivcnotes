@@ -10,12 +10,12 @@ use crate::{
     tx::{IssueTx, SealedIssueTx, SealedSplitTx, SplitTx},
     Address, Blind, BlindNoteHash, FWrap,
 };
+use ark_serialize::CanonicalSerialize;
 use arkeddsa::PublicKey;
 use rand::{CryptoRng, RngCore};
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
-
 pub struct Contact<E: IVC> {
     #[serde(with = "crate::ark_serde")]
     pub address: Address<E::Field>,
@@ -51,8 +51,6 @@ pub struct Wallet<E: IVC> {
     pub(crate) prover: Prover<E>,
     // ivc verifier
     pub(crate) verifier: Verifier<E>,
-    // self contract
-    pub(crate) contact: Contact<E>,
 }
 
 impl<E: IVC> Auth<E> {
@@ -83,28 +81,12 @@ impl<E: IVC> Auth<E> {
 }
 
 impl<E: IVC> Wallet<E> {
-    pub fn new(
-        auth: Auth<E>,
-        poseidon: &PoseidonConfigs<E::Field>,
-        prover: Prover<E>,
-        verifier: Verifier<E>,
-        username: String,
-    ) -> Self {
-        let contact = Contact {
-            address: *auth.address(),
-            username,
-            public_key: auth.public_key().clone(),
-        };
+    pub fn new(h: &PoseidonConfigs<E::Field>, prover: Prover<E>, verifier: Verifier<E>) -> Self {
         Self {
-            h: poseidon.clone(),
+            h: h.clone(),
             prover,
             verifier,
-            contact,
         }
-    }
-
-    pub fn address(&self) -> &Address<E::Field> {
-        &self.contact.address
     }
 
     pub fn issue<R: RngCore + CryptoRng>(
@@ -113,7 +95,7 @@ impl<E: IVC> Wallet<E> {
         auth: &Auth<E>,
         terms: &Terms,
         value: u64,
-        receiver: &Contact<E>,
+        receiver: &Address<E::Field>,
     ) -> Result<NoteHistory<E>, crate::Error> {
         // create asset from terms
         let asset = Asset::new(auth.address(), terms);
@@ -123,7 +105,7 @@ impl<E: IVC> Wallet<E> {
         // create new note
         let note = Note::new(
             &asset.hash(),
-            &receiver.address,
+            receiver,
             value,
             0,
             &NoteOutIndex::Out1,
@@ -132,14 +114,14 @@ impl<E: IVC> Wallet<E> {
         );
 
         // create the transaction
-        let tx = IssueTx::new(self.address(), &note);
+        let tx = IssueTx::new(auth.address(), &note);
         // and sign
         let sealed = auth.issue(&self.h, &tx)?;
 
         // construct public inputs
         let state_in = &asset_hash.as_ref().into();
         let state_out = &self.h.state_out_from_issue_tx(sealed.tx());
-        let sender = self.address();
+        let sender = auth.address();
 
         let public_inputs = PublicInput::new(
             asset_hash,
@@ -155,7 +137,7 @@ impl<E: IVC> Wallet<E> {
         let signature = sealed.signature();
         let nullifier_key = auth.nullifier_key();
         let aux_inputs: AuxInputs<E> = AuxInputs::new(
-            &receiver.address,
+            receiver,
             public_key,
             signature,
             &nullifier_key,
@@ -175,7 +157,7 @@ impl<E: IVC> Wallet<E> {
             .create_proof(&self.h, public_inputs, aux_inputs, rng)?;
 
         // create note history
-        let step: IVCStep<E> = IVCStep::new(&proof, state_out, &Default::default(), self.address());
+        let step: IVCStep<E> = IVCStep::new(&proof, state_out, &Default::default(), auth.address());
         let note_history = NoteHistory {
             asset,
             steps: vec![step],
@@ -192,7 +174,7 @@ impl<E: IVC> Wallet<E> {
         auth: &Auth<E>,
         mut note_history: NoteHistory<E>,
         value: u64,
-        receiver: &Contact<E>,
+        receiver: &Address<E::Field>,
     ) -> Result<(NoteHistory<E>, NoteHistory<E>), crate::Error> {
         let sender = auth.address();
 
@@ -224,7 +206,7 @@ impl<E: IVC> Wallet<E> {
         // crate transfer note, output 1
         let note_out_1 = Note::new(
             asset_hash,
-            &receiver.address,
+            receiver,
             value_out_1,
             step,
             &NoteOutIndex::Out1,
@@ -261,7 +243,7 @@ impl<E: IVC> Wallet<E> {
         let value_out = value_out_1;
         let sibling = &note_history.sibling;
         let aux_inputs: AuxInputs<E> = AuxInputs::new(
-            &receiver.address,
+            receiver,
             public_key,
             signature,
             &nullifier_key,
@@ -299,7 +281,7 @@ impl<E: IVC> Wallet<E> {
         Ok((note_history_0, note_history_1))
     }
 
-    pub fn verify_incoming(&mut self, note_history: &NoteHistory<E>) -> Result<(), crate::Error> {
+    pub fn verify(&self, note_history: &NoteHistory<E>) -> Result<(), crate::Error> {
         let asset_hash = &note_history.asset.hash();
         let mut state_in = &asset_hash.as_ref().into();
 
@@ -319,13 +301,11 @@ impl<E: IVC> Wallet<E> {
                     .then_some(())
                     .ok_or(crate::Error::Verify("bad current state".into()))?;
             }
-            use ark_serialize::CanonicalSerialize;
             let mut bytes = Vec::new();
             step.proof.serialize_compressed(&mut bytes).unwrap();
             let verified = self.verifier.verify_proof(&step.proof, &public_input)?;
             if !verified {
-                println!("not verified {}", i);
-                return Err(crate::Error::Verify("not verified".into()));
+                return Err(crate::Error::Verify("proof is not verified".into()));
             }
             state_in = state_out;
         }

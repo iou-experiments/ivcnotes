@@ -20,4 +20,5 @@
         "-A",
         "incomplete-features"
     ],
+    "livePreview.defaultPreviewPath": "/wasm/index.html",
 }
