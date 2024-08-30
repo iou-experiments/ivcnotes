@@ -17,7 +17,7 @@ struct Tx {
     asset: Asset,
     sender: String,
     receiver: String,
-    value: u64,
+    value: u32,
 }
 
 struct Wallet {
@@ -64,7 +64,7 @@ impl Wallet {
         })
     }
 
-    fn issue(&mut self, receiver: &str, value: u64) -> Result<WasmNoteHistory, JsValue> {
+    fn issue(&mut self, receiver: &str, value: u32) -> Result<WasmNoteHistory, JsValue> {
         // * Create the note with ivc-notes engine
         // * Add the note to liabilities
         // * Add as outgoing transaction
@@ -88,7 +88,7 @@ impl Wallet {
         &mut self,
         note_index: usize,
         receiver: &str,
-        value: u64,
+        value: u32,
     ) -> Result<WasmNoteHistory, JsValue> {
         // * Get the note for the given index
         // * Split the note with ivc-notes engine
@@ -157,7 +157,7 @@ impl Wallet {
 }
 
 // Emulate the issue event
-fn issue(sender: &mut Wallet, receiver: &mut Wallet, value: u64) -> Result<(), JsValue> {
+fn issue(sender: &mut Wallet, receiver: &mut Wallet, value: u32) -> Result<(), JsValue> {
     let note_history = sender.issue(&receiver.address(), value)?;
 
     // Assume communication happened just here:
@@ -172,7 +172,7 @@ fn transfer(
     sender: &mut Wallet,
     receiver: &mut Wallet,
     note_index: usize,
-    value: u64,
+    value: u32,
 ) -> Result<(), JsValue> {
     let note_history = sender.transfer(note_index, &receiver.address(), value)?;
 
@@ -193,6 +193,14 @@ fn log<T: Debug>(s: &T) {
     use web_sys::console;
     let str = format!("{:#?}", s);
     console::log_1(&str.into());
+}
+
+#[wasm_bindgen_test]
+fn test_auth_roundtrip() {
+    let wasm_auth0 = WasmIVCNotes::generate_auth().unwrap();
+    let js_auth = wasm_auth0.as_js().unwrap();
+    let wasm_auth1 = WasmAuth::from_js(js_auth).unwrap();
+    assert_eq!(wasm_auth0.addresss(), wasm_auth1.addresss())
 }
 
 #[wasm_bindgen_test]

@@ -27,12 +27,15 @@ pub struct WasmAuth {
 #[wasm_bindgen]
 impl WasmAuth {
     pub fn as_js(&self) -> Result<JsValue, serde_wasm_bindgen::Error> {
-        serde_wasm_bindgen::to_value(&self)
+        serde_wasm_bindgen::to_value(&self.secret)
     }
 
-    pub fn from_js(value: JsValue) -> Result<WasmNoteHistory, JsValue> {
-        let inner: NoteHistory<Concrete> = serde_wasm_bindgen::from_value(value)?;
-        Ok(WasmNoteHistory { inner })
+    pub fn from_js(value: JsValue) -> Result<WasmAuth, JsValue> {
+        let secret = serde_wasm_bindgen::from_value(value)?;
+        let auth: Auth<Concrete> = Auth::new(&POSEIDON_CFG, secret)
+            .map_err(|_| JsValue::from("cannot recover auth object"))?;
+        let address = auth.address().to_string();
+        Ok(WasmAuth { secret, address })
     }
 
     pub fn addresss(&self) -> String {
@@ -77,8 +80,8 @@ impl WasmNoteHistory {
         Ok(WasmNoteHistory { inner })
     }
 
-    pub fn value(&self) -> u64 {
-        self.inner.value()
+    pub fn value(&self) -> u32 {
+        self.inner.value() as u32
     }
 
     pub fn owner(&self) -> String {
@@ -147,7 +150,7 @@ impl WasmIVCNotes {
         &self,
         auth: &WasmAuth,
         receiver: &str,
-        value: u64,
+        value: u32,
     ) -> Result<WasmNoteHistory, JsValue> {
         let rng = &mut OsRng;
         let auth = Auth::<Concrete>::new(&POSEIDON_CFG, auth.secret)
@@ -156,7 +159,7 @@ impl WasmIVCNotes {
             .map_err(|_| JsValue::from("invalid address"))?;
         let note_history = self
             .inner
-            .issue(rng, &auth, &Terms::Open, value, &receiver)
+            .issue(rng, &auth, &Terms::Open, value as u64, &receiver)
             .map_err(|_| JsValue::from("prover error"))?;
         let note_history = WasmNoteHistory {
             inner: note_history,
@@ -169,7 +172,7 @@ impl WasmIVCNotes {
         auth: &WasmAuth,
         note_history: &WasmNoteHistory,
         receiver: &str,
-        value: u64,
+        value: u32,
     ) -> Result<WasmTransferOutput, JsValue> {
         let rng = &mut OsRng;
         let auth = Auth::<Concrete>::new(&POSEIDON_CFG, auth.secret)
@@ -178,7 +181,13 @@ impl WasmIVCNotes {
             .map_err(|_| JsValue::from("invalid address"))?;
         let out = self
             .inner
-            .split(rng, &auth, note_history.inner.clone(), value, &receiver)
+            .split(
+                rng,
+                &auth,
+                note_history.inner.clone(),
+                value as u64,
+                &receiver,
+            )
             .map_err(|e| JsValue::from_str(&format!("{e}")))?;
         let out = WasmTransferOutput {
             out0: WasmNoteHistory { inner: out.0 },
